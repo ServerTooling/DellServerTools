@@ -55,7 +55,7 @@ image [`domistyle/idrac6`](https://github.com/DomiStyle/docker-idrac6) does this
 ```bash
 docker run -d --restart unless-stopped --name idrac6 \
   -p 5800:5800 \
-  -e IDRAC_HOST=192.168.5.6 \
+  -e IDRAC_HOST=<your idrac ip> \
   -e IDRAC_USER=<your idrac user> \
   -e IDRAC_PASSWORD=<your idrac password> \
   domistyle/idrac6
