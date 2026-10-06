@@ -20,6 +20,7 @@ sealed interface Screen {
     data object Home : Screen
     data class Edit(val profile: ServerProfile, val isNew: Boolean) : Screen
     data class Terminal(val profileId: String) : Screen
+    data class IdracScreen(val profileId: String) : Screen
     data class Proxmox(val profileId: String) : Screen
     data class Node(val profileId: String, val node: String) : Screen
     data class Guest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
@@ -80,6 +81,10 @@ class ServersViewModel(application: Application) : AndroidViewModel(application)
         val needsPassword = !(profile.type == ServerType.PROXMOX && profile.usesApiToken)
         openWithPassword(profile, target, needsPassword)
     }
+
+    /** The iDRAC6 screen preview (needs the iDRAC password for its web interface). */
+    fun openScreen(profile: ServerProfile) =
+        openWithPassword(profile, Screen.IdracScreen(profile.id), needsPassword = true)
 
     /** SSH shell on the Proxmox host. */
     fun openShell(profile: ServerProfile) = openWithPassword(profile, Screen.Terminal(profile.id), needsPassword = true)

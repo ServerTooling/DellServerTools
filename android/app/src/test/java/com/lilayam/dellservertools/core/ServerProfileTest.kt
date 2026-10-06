@@ -10,7 +10,14 @@ class ServerProfileTest {
     @Test
     fun `profiles survive a json round trip`() {
         val profiles = listOf(
-            ServerProfile(type = ServerType.IDRAC6, name = "R710", host = "192.0.2.15", username = "root", rememberPassword = true),
+            ServerProfile(
+                type = ServerType.IDRAC6,
+                name = "R710",
+                host = "192.0.2.15",
+                username = "root",
+                rememberPassword = true,
+                consoleUrl = "http://192.0.2.30:5800",
+            ),
             ServerProfile(
                 type = ServerType.PROXMOX,
                 name = "pve",

@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import com.lilayam.dellservertools.ui.AppViewModels
 import com.lilayam.dellservertools.ui.DellServerToolsApp
+import com.lilayam.dellservertools.ui.IdracScreenViewModel
 import com.lilayam.dellservertools.ui.ProxmoxViewModel
 import com.lilayam.dellservertools.ui.ServersViewModel
 import com.lilayam.dellservertools.ui.TerminalViewModel
@@ -18,13 +19,14 @@ class MainActivity : ComponentActivity() {
     private val servers: ServersViewModel by viewModels()
     private val terminal: TerminalViewModel by viewModels()
     private val proxmox: ProxmoxViewModel by viewModels()
+    private val idracScreen: IdracScreenViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
-            DellServerToolsApp(AppViewModels(servers, terminal, proxmox), onExit = ::finish)
+            DellServerToolsApp(AppViewModels(servers, terminal, proxmox, idracScreen), onExit = ::finish)
         }
     }
 

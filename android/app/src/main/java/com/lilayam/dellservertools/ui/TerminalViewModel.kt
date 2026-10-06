@@ -170,9 +170,10 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     /** Types a line followed by Enter. */
     fun sendLine(text: String) = sendRaw(text + "\r")
 
-    fun sendRaw(text: String) {
+    fun sendRaw(text: String, delayMs: Long = 0) {
         val current = session ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            if (delayMs > 0) delay(delayMs)
             runCatching { current.send(text) }.onFailure { e ->
                 _state.update { it.copy(message = "Send failed: ${e.message}") }
             }

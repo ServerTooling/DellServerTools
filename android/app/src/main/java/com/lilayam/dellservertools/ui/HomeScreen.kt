@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
@@ -111,6 +112,11 @@ fun HomeScreen(profiles: List<ServerProfile>, vm: ServersViewModel) {
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
+                        if (profile.type == ServerType.IDRAC6) {
+                            IconButton(onClick = { vm.openScreen(profile) }) {
+                                Icon(Icons.Filled.DesktopWindows, "Screen of ${profile.displayName}")
+                            }
+                        }
                         IconButton(onClick = { vm.edit(profile) }) { Icon(Icons.Filled.Edit, "Edit ${profile.displayName}") }
                     }
                 }
@@ -149,6 +155,10 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
     var realm by rememberSaveable { mutableStateOf(original.realm) }
     var tokenId by rememberSaveable { mutableStateOf(original.apiTokenId) }
     var tokenSecret by rememberSaveable { mutableStateOf("") }
+    var consoleUrl by rememberSaveable { mutableStateOf(original.consoleUrl) }
+    var webPort by rememberSaveable { mutableStateOf(original.webPort.toString()) }
+    val webPortValue = webPort.toIntOrNull()?.takeIf { it in 1..65535 }
+    val consoleUrlValid = consoleUrl.isBlank() || consoleUrl.startsWith("http://") || consoleUrl.startsWith("https://")
     var showPassword by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
 
@@ -157,7 +167,8 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
     val hasTokenSecret = tokenId.isBlank() || tokenSecret.isNotEmpty() ||
         (original.apiTokenId.isNotBlank() && vm.apiTokenSecret(original) != null)
     val valid = host.isNotBlank() && username.isNotBlank() && portValue != null &&
-        (isIdrac || sshPortValue != null) && hasTokenSecret
+        (isIdrac || sshPortValue != null) && hasTokenSecret && consoleUrlValid &&
+        (!isIdrac || webPortValue != null)
 
     Column(Modifier.fillMaxSize().imePadding()) {
         TopAppBar(
@@ -233,6 +244,35 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                         "SSH must be enabled on the iDRAC.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                OutlinedTextField(
+                    value = webPort,
+                    onValueChange = { webPort = it.filter(Char::isDigit).take(5) },
+                    label = { Text("Web port (for the screen preview)") },
+                    singleLine = true,
+                    isError = webPortValue == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth().testTag("field-web-port"),
+                )
+                OutlinedTextField(
+                    value = consoleUrl,
+                    onValueChange = { consoleUrl = it.trim() },
+                    label = { Text("Graphical console URL (optional)") },
+                    placeholder = { Text("http://192.168.1.20:5800") },
+                    supportingText = {
+                        Text(
+                            if (consoleUrlValid) {
+                                "noVNC page of the iDRAC6 Java viewer running in Docker on another computer " +
+                                    "(see the help). Shows the real screen, including BIOS and boot."
+                            } else {
+                                "Must start with http:// or https://"
+                            },
+                        )
+                    },
+                    isError = !consoleUrlValid,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
+                    modifier = Modifier.fillMaxWidth().testTag("field-console-url"),
+                )
             } else {
                 Text("Realm", style = MaterialTheme.typography.labelLarge)
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -295,6 +335,8 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                             realm = realm,
                             apiTokenId = tokenId,
                             rememberPassword = remember,
+                            consoleUrl = if (isIdrac) consoleUrl else "",
+                            webPort = webPortValue ?: original.webPort,
                         ),
                         password = password,
                         apiTokenSecret = tokenSecret,

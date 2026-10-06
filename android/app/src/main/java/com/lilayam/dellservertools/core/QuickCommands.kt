@@ -21,13 +21,15 @@ object IdracCommands {
             "Press \"Exit console\" (Ctrl+\\) to get back to the iDRAC prompt.",
     )
 
+    /** Pressed shortly after attaching so a waiting login prompt is redrawn. */
+    const val SERIAL_CONSOLE_WAKE_DELAY_MS = 1_500L
+
     val quickCommands: List<QuickCommand> = listOf(
         serialConsole,
         QuickCommand("Power status", "racadm serveraction powerstatus", "Show whether the server is on or off."),
         QuickCommand("System info", "racadm getsysinfo", "iDRAC, BIOS and host system summary."),
         QuickCommand("Event log", "racadm getsel", "System event log (hardware errors, power events)."),
         QuickCommand("iDRAC log", "racadm getraclog", "iDRAC log (logins, configuration changes)."),
-        QuickCommand("Sensors", "racadm getsensorinfo", "Temperatures, fans, voltages and PSUs."),
         QuickCommand("SOL settings", "racadm getconfig -g cfgIpmiSol", "Serial Over LAN configuration."),
         QuickCommand(
             "Power on",
@@ -74,6 +76,13 @@ object ProxmoxShellCommands {
         QuickCommand("Containers", "pct list", "List LXC containers on this node."),
         QuickCommand("Storage", "pvesm status", "Storage usage."),
         QuickCommand("Version", "pveversion -v", "Proxmox VE package versions."),
+        QuickCommand(
+            "Enable iDRAC console login",
+            "systemctl enable --now serial-getty@ttyS1.service && systemctl --no-pager status serial-getty@ttyS1.service | head -n 5",
+            "Starts a login prompt on the serial port COM2 (ttyS1), which the iDRAC6 \"Server console\" " +
+                "(console com2) is connected to. After this you can log in to this host from the iDRAC.",
+            needsConfirmation = true,
+        ),
         QuickCommand("Cluster", "pvecm status", "Cluster / quorum status."),
         QuickCommand("Disk usage", "df -h", "Filesystem usage."),
         QuickCommand("Memory", "free -h", "Memory and swap usage."),

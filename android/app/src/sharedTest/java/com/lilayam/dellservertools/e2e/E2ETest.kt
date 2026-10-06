@@ -2,6 +2,7 @@ package com.lilayam.dellservertools.e2e
 
 import android.content.Context
 import android.content.Intent
+import android.view.ViewGroup
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
@@ -16,11 +17,17 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import com.lilayam.dellservertools.MainActivity
+import com.lilayam.dellservertools.testing.FakeAndroidKeyStore
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 
-/** Shared setup for end-to-end tests: a clean app and some UI helpers. */
+/**
+ * Shared setup for end-to-end tests: a clean app and some UI helpers.
+ *
+ * These tests run on a device/emulator (`connectedDebugAndroidTest`) and on the
+ * JVM under Robolectric (`testDebugUnitTest`).
+ */
 abstract class E2ETest {
     @get:Rule
     val compose = createEmptyComposeRule()
@@ -31,19 +38,36 @@ abstract class E2ETest {
 
     @Before
     fun clearAppData() {
-        // The orchestrator also clears data between tests; this keeps IDE runs clean too.
-        listOf("profiles", "secrets", "trust").forEach {
-            context.getSharedPreferences(it, Context.MODE_PRIVATE).edit().clear().commit()
-        }
+        FakeAndroidKeyStore.installIfRobolectric()
+        // The orchestrator clears data between tests on devices; this covers Robolectric and IDE runs.
+        deleteAppData()
     }
 
     @After
     fun closeApp() {
-        scenario?.close()
+        closeScenario()
+        deleteAppData()
+    }
+
+    private fun closeScenario() {
+        scenario?.let { s ->
+            // Robolectric doesn't detach a destroyed activity's views, which would leave its Compose
+            // root visible to the next test. Detaching them explicitly is harmless on a device.
+            runCatching { s.onActivity { (it.window.decorView as ViewGroup).removeAllViews() } }
+            s.close()
+        }
+        scenario = null
+    }
+
+    private fun deleteAppData() {
+        listOf("profiles", "secrets", "trust").forEach {
+            context.getSharedPreferences(it, Context.MODE_PRIVATE).edit().clear().commit()
+            context.deleteSharedPreferences(it)
+        }
     }
 
     protected fun launch(intent: Intent? = null) {
-        scenario?.close()
+        closeScenario()
         scenario = if (intent == null) {
             ActivityScenario.launch(MainActivity::class.java)
         } else {

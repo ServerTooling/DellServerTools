@@ -28,6 +28,13 @@ data class ServerProfile(
     /** Proxmox only: optional API token ID (`user@realm!name`) used instead of the password for the API. */
     val apiTokenId: String = "",
     val rememberPassword: Boolean = false,
+    /**
+     * iDRAC6 only: optional web page showing the graphical console, e.g. the noVNC page of the
+     * Java viewer running in a container on another machine (see README).
+     */
+    val consoleUrl: String = "",
+    /** iDRAC6 only: HTTPS port of the iDRAC web interface, used for the screen preview. */
+    val webPort: Int = 443,
 ) {
     val displayName: String get() = name.ifBlank { host }
 
@@ -51,6 +58,8 @@ data class ServerProfile(
         .put("realm", realm)
         .put("apiTokenId", apiTokenId)
         .put("rememberPassword", rememberPassword)
+        .put("consoleUrl", consoleUrl)
+        .put("webPort", webPort)
 
     companion object {
         fun defaultPort(type: ServerType): Int = when (type) {
@@ -71,6 +80,8 @@ data class ServerProfile(
                 realm = json.optString("realm", "pam"),
                 apiTokenId = json.optString("apiTokenId"),
                 rememberPassword = json.optBoolean("rememberPassword", false),
+                consoleUrl = json.optString("consoleUrl"),
+                webPort = json.optInt("webPort", 443),
             )
         }
 

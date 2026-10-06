@@ -57,9 +57,10 @@ android {
     }
 
     sourceSets {
-        // Fakes (e.g. the fake Proxmox API) shared by JVM integration tests and on-device E2E tests.
-        getByName("test").java.srcDir("src/testShared/java")
-        getByName("androidTest").java.srcDir("src/testShared/java")
+        // End-to-end UI tests and fakes (e.g. the fake Proxmox API) run both on a device/emulator
+        // (androidTest) and on the JVM under Robolectric (test).
+        getByName("test").java.srcDir("src/sharedTest/java")
+        getByName("androidTest").java.srcDir("src/sharedTest/java")
     }
 
     packaging {
@@ -70,8 +71,12 @@ android {
     }
 
     testOptions {
+        unitTests.isIncludeAndroidResources = true
         unitTests.all {
             it.useJUnitPlatform()
+            // Robolectric UI tests leak state between tests in one JVM; give each test class its own.
+            it.forkEvery = 1
+            it.maxParallelForks = 2
             it.testLogging {
                 events("failed")
                 exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
@@ -110,6 +115,13 @@ dependencies {
     testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
     testImplementation("org.apache.sshd:sshd-core:2.15.0")
     testRuntimeOnly("org.slf4j:slf4j-nop:2.0.16")
+    // The end-to-end UI tests also run on the JVM with Robolectric (JUnit 4, via the vintage engine).
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.11.4")
 
     // End-to-end UI tests on a device / emulator.
     androidTestImplementation(composeBom)

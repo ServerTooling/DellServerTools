@@ -45,6 +45,7 @@ class AppViewModels(
     val servers: ServersViewModel,
     val terminal: TerminalViewModel,
     val proxmox: ProxmoxViewModel,
+    val idracScreen: IdracScreenViewModel,
 )
 
 @Composable
@@ -79,6 +80,7 @@ fun DellServerToolsApp(vms: AppViewModels, onExit: () -> Unit) {
                     Screen.Home -> HomeScreen(state.profiles, vms.servers)
                     is Screen.Edit -> EditServerScreen(screen, vms.servers)
                     is Screen.Terminal -> WithProfile(vms, screen.profileId) { TerminalScreen(it, vms) }
+                    is Screen.IdracScreen -> WithProfile(vms, screen.profileId) { IdracScreenScreen(it, vms) }
                     is Screen.Proxmox -> WithProfile(vms, screen.profileId) { ProxmoxHomeScreen(it, vms) }
                     is Screen.Node -> WithProfile(vms, screen.profileId) { NodeScreen(it, screen.node, vms) }
                     is Screen.Guest -> WithProfile(vms, screen.profileId) { GuestScreen(it, screen, vms) }

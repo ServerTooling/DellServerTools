@@ -45,13 +45,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import com.lilayam.dellservertools.core.ServerProfile
+import com.lilayam.dellservertools.core.ServerType
 import com.lilayam.dellservertools.core.proxmox.PinnedTls
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 
 /**
- * The real Proxmox web interface (and its noVNC / xterm.js consoles) in a
- * WebView, logged in with the API ticket and pinned to the approved certificate.
+ * A web page inside the app: the real Proxmox web interface (and its noVNC /
+ * xterm.js consoles), logged in with the API ticket and pinned to the approved
+ * certificate; or, for an iDRAC6, the user's graphical console page.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,7 +61,8 @@ import java.security.cert.X509Certificate
 fun WebScreen(profile: ServerProfile, screen: Screen.Web, vms: AppViewModels) {
     val context = LocalContext.current
     val proxmox = vms.proxmox
-    val pinned = remember(profile) { proxmox.pinnedFingerprint(profile) }
+    val isProxmox = profile.type == ServerType.PROXMOX
+    val pinned = remember(profile) { if (isProxmox) proxmox.pinnedFingerprint(profile) else null }
     var progress by remember { mutableIntStateOf(0) }
     var mobile by rememberSaveable { mutableStateOf(false) }
     var pendingFiles by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
@@ -107,7 +110,7 @@ fun WebScreen(profile: ServerProfile, screen: Screen.Web, vms: AppViewModels) {
                 }
             }
 
-            proxmox.webTicket?.let { ticket ->
+            proxmox.webTicket?.takeIf { isProxmox }?.let { ticket ->
                 val cookies = CookieManager.getInstance()
                 cookies.setAcceptCookie(true)
                 cookies.setCookie(proxmox.baseUrl, "PVEAuthCookie=${Uri.encode(ticket)}; Path=/; Secure")

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
@@ -160,6 +161,11 @@ fun TerminalScreen(profile: ServerProfile, vms: AppViewModels) {
                 }) { Icon(Icons.Filled.ContentCopy, "Copy output") }
                 IconButton(onClick = vm::clear) { Icon(Icons.Filled.DeleteSweep, "Clear") }
                 if (isIdrac) {
+                    IconButton(onClick = { vms.servers.openScreen(profile) }) {
+                        Icon(Icons.Filled.DesktopWindows, "Server screen")
+                    }
+                }
+                if (isIdrac) {
                     IconButton(onClick = { showHelp = true }) { Icon(Icons.AutoMirrored.Filled.HelpOutline, "Help") }
                 }
                 if (connected) {
@@ -204,7 +210,16 @@ fun TerminalScreen(profile: ServerProfile, vms: AppViewModels) {
             }
             items(if (isIdrac) IdracCommands.quickCommands else ProxmoxShellCommands.quickCommands) { command ->
                 AssistChip(
-                    onClick = { if (command.needsConfirmation) pendingCommand = command else vm.sendLine(command.command) },
+                    onClick = {
+                        when {
+                            command.needsConfirmation -> pendingCommand = command
+                            command == IdracCommands.serialConsole -> {
+                                vm.sendLine(command.command)
+                                vm.sendRaw("\r", delayMs = IdracCommands.SERIAL_CONSOLE_WAKE_DELAY_MS)
+                            }
+                            else -> vm.sendLine(command.command)
+                        }
+                    },
                     label = { Text(command.label) },
                     enabled = connected,
                     colors = if (command.needsConfirmation) {
@@ -355,24 +370,33 @@ private fun IdracHelpDialog(onDismiss: () -> Unit) {
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "You are at the iDRAC's own prompt. Type racadm commands or use the chips at the top " +
-                        "(power on/off/reset, logs, sensors).",
+                    "You are at the iDRAC's own prompt (/admin1->). It understands racadm commands, not Linux " +
+                        "commands. Use the chips at the top for power, logs and system info.",
+                )
+                Text("Server console is blank?", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "\"Server console\" (console com2) connects you to the server's serial port COM2. You only " +
+                        "see something if the server is using that port; your keystrokes are sent to it but " +
+                        "nothing echoes until a program on the server answers.",
                 )
                 Text(
-                    "\"Server console\" runs \"console com2\": the server's serial console, where you can " +
-                        "log in to the OS and run commands. \"Exit console\" (Ctrl+\\) returns to the iDRAC prompt.",
+                    "1. Login prompt (no reboot needed): open your Proxmox server's SSH shell in this app and " +
+                        "tap \"Enable iDRAC console login\" (runs serial-getty on ttyS1). Then come back, tap " +
+                        "\"Server console\" and press Enter: you get \"login:\".\n\n" +
+                        "2. Linux boot messages: add console=tty0 console=ttyS1,115200n8 to the kernel command " +
+                        "line (GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub, then update-grub; or " +
+                        "/etc/kernel/cmdline + proxmox-boot-tool refresh) and reboot.\n\n" +
+                        "3. BIOS / POST screens: in BIOS (F2) > Serial Communication choose \"On with Console " +
+                        "Redirection via COM2\", Failsafe Baud Rate 115200, Redirection After Boot Enabled. " +
+                        "This needs a monitor or the graphical console once.",
+                    fontSize = 13.sp,
                 )
-                Text("If \"console com2\" stays blank, set up Serial Over LAN once:", fontWeight = FontWeight.SemiBold)
+                Text("Graphical console (the real screen)", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "1. BIOS (F2) > Serial Communication: \"On with Console Redirection via COM2\", " +
-                        "Redirection After Boot: Enabled, Failsafe baud rate 115200.\n" +
-                        "2. racadm config -g cfgIpmiSol -o cfgIpmiSolEnable 1\n" +
-                        "3. racadm config -g cfgIpmiSol -o cfgIpmiSolBaudRate 115200\n" +
-                        "4. racadm config -g cfgSerial -o cfgSerialSshEnable 1\n" +
-                        "5. Linux / Proxmox: add console=tty0 console=ttyS1,115200n8 to the kernel " +
-                        "command line and run: systemctl enable --now serial-getty@ttyS1",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
+                    "The iDRAC6 graphical console only exists as an old Java program. Run it in Docker on an " +
+                        "always-on x86 computer other than this server (it can't show its own reboot), e.g. " +
+                        "the domistyle/idrac6 image, and put its address (http://that-computer:5800) in " +
+                        "\"Graphical console URL\" when editing this iDRAC. A screen button then appears here.",
                 )
                 Text("\"BIOS keys\" sends F2 / F10 / F11 / F12 while the server boots over the serial console.")
             }

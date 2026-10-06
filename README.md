@@ -11,17 +11,21 @@ No Java and no PC required.
 The iDRAC6 Virtual Console is a Java Web Start applet (`viewer.jnlp`), and modern Java no longer runs it.
 This app talks to the iDRAC over **SSH** instead:
 
+- **Server screen**: the iDRAC's "Virtual Console Preview" (the picture on the iDRAC home page), refreshed
+  every few seconds, with pinch-to-zoom. Shows BIOS, boot and OS screens. It's a picture: to type, use the
+  serial console below or a full graphical console (see [Graphical console](#graphical-console-optional)).
 - **Power control**: power status, power on, graceful shutdown, power off, power cycle, hard reset
   (each asks for confirmation).
-- **Health**: system info, System Event Log, iDRAC log, sensors (temperatures, fans, PSUs).
+- **Health**: system info, System Event Log, iDRAC log, Serial Over LAN settings.
 - **Server text console (Serial Over LAN)**: `console com2` attaches you to the server's serial console,
   so you can watch it boot, enter the BIOS (F2/F10/F11/F12 buttons included), and log in to the OS
   and run commands. Ctrl+\ goes back to the iDRAC prompt.
 - **Any `racadm` command** from a built-in terminal.
 - **Import `viewer.jnlp`**: open or share the file with the app and it fills in the iDRAC address and username.
 
-> The graphical Java KVM viewer (Avocent protocol) is **not** reimplemented. For OS-level access use
-> Serial Over LAN, or the SSH shell / web UI of the OS itself (for example Proxmox, below).
+> The interactive graphical Java KVM viewer (Avocent protocol) is **not** reimplemented. To see the screen,
+> use the screen preview; to type, use Serial Over LAN, the SSH shell / web UI of the OS itself (for example
+> Proxmox, below), or the optional graphical console.
 
 ### Proxmox VE
 
@@ -52,20 +56,33 @@ Download the latest APK from the [Releases](../../releases) page and open it on 
    the Java viewer, not your login, so you still enter your real password.
 3. The first connection shows the iDRAC's SSH key fingerprint; accept it once.
 
-**Serial Over LAN (one-time setup)** so that "Server console" shows something:
+**Server console is blank?** "Server console" (`console com2`) connects you to the server's serial port COM2.
+It stays blank, and what you type doesn't echo, until something on the server uses that port:
 
-1. BIOS (F2) → **Serial Communication**: *On with Console Redirection via COM2*,
-   *Redirection After Boot*: Enabled, *Failsafe Baud Rate*: 115200.
-2. From the app's iDRAC terminal:
-   ```
-   racadm config -g cfgIpmiSol -o cfgIpmiSolEnable 1
-   racadm config -g cfgIpmiSol -o cfgIpmiSolBaudRate 115200
-   racadm config -g cfgSerial -o cfgSerialSshEnable 1
-   ```
-3. On Linux / Proxmox, add `console=tty0 console=ttyS1,115200n8` to the kernel command line
+1. **Login prompt, no reboot**: SOL must be on (`racadm getconfig -g cfgIpmiSol` shows `cfgIpmiSolEnable=1`; if not,
+   run `racadm config -g cfgIpmiSol -o cfgIpmiSolEnable 1` and `... -o cfgIpmiSolBaudRate 115200`). Then on the
+   server's OS (e.g. the Proxmox SSH shell in this app → *Enable iDRAC console login*) run
+   `systemctl enable --now serial-getty@ttyS1`. Open *Server console* again and press Enter: `login:` appears.
+2. **Linux boot messages**: add `console=tty0 console=ttyS1,115200n8` to the kernel command line
    (`/etc/default/grub` → `GRUB_CMDLINE_LINUX_DEFAULT`, then `update-grub`; on systemd-boot / ZFS installs edit
-   `/etc/kernel/cmdline` and run `proxmox-boot-tool refresh`) and enable a login prompt:
-   `systemctl enable --now serial-getty@ttyS1`.
+   `/etc/kernel/cmdline` and run `proxmox-boot-tool refresh`) and reboot.
+3. **BIOS / POST screens**: BIOS (F2) → **Serial Communication**: *On with Console Redirection via COM2*,
+   *Redirection After Boot*: Enabled, *Failsafe Baud Rate*: 115200. This needs a monitor or the graphical console once.
+
+### Graphical console (optional)
+
+The interactive iDRAC6 console only exists as an old Java program. You can still use it from the phone by
+running it in Docker on an always-on x86 computer **other than the server itself** (otherwise it disappears when
+the server reboots), for example with the community image `domistyle/idrac6`:
+
+```bash
+docker run -d --name idrac6 -p 5800:5800 \
+  -e IDRAC_HOST=<idrac ip> -e IDRAC_USER=<user> -e IDRAC_PASSWORD=<password> \
+  domistyle/idrac6
+```
+
+Then edit the iDRAC in the app and set **Graphical console URL** to `http://<that computer>:5800`. A button on the
+screen preview opens it inside the app (full keyboard and mouse, including the BIOS).
 
 ### Proxmox VE
 
@@ -104,12 +121,13 @@ cd android
 | Kind | Where | What it covers | Run |
 | --- | --- | --- | --- |
 | Unit | `app/src/test/.../core` | JNLP parsing, terminal emulator, profiles, Proxmox JSON, commands | `./gradlew testDebugUnitTest` |
-| Integration | `app/src/test/.../integration` | Proxmox client against a fake HTTPS Proxmox API (self-signed cert pinning, login, CSRF, ticket renewal, API tokens, tasks, snapshots); SSH against an in-process server that only speaks the iDRAC6's legacy algorithms (trust on first use, racadm, `console com2` and Ctrl+\, bad password, changed host key) | `./gradlew testDebugUnitTest` |
-| End-to-end | `app/src/androidTest/.../e2e` | The real app on an emulator: add/edit/delete servers, `viewer.jnlp` import, password prompt and connection errors, and a full Proxmox flow (certificate approval, overview, starting a VM and following its task, tasks and node screens) against a fake Proxmox API on the device | `./gradlew connectedDebugAndroidTest` (needs a device or emulator) |
+| Integration | `app/src/test/.../integration` | iDRAC screen preview client against a fake iDRAC web interface (login, ST2 token, session expiry, too many sessions); Proxmox client against a fake HTTPS Proxmox API (self-signed cert pinning, login, CSRF, ticket renewal, API tokens, tasks, snapshots); SSH against an in-process server that only speaks the iDRAC6's legacy algorithms (trust on first use, racadm, `console com2` and Ctrl+\, bad password, changed host key) | `./gradlew testDebugUnitTest` |
+| End-to-end | `app/src/sharedTest/.../e2e` | The real app driven through its UI: add/edit/delete servers, `viewer.jnlp` import, password prompt and connection errors, the iDRAC screen preview (certificate approval, image, logout), and a full Proxmox flow (certificate approval, overview, starting a VM and following its task, tasks and node screens) against fake servers running in the test | On the JVM with Robolectric: `./gradlew testDebugUnitTest`. On a device or emulator: `./gradlew connectedDebugAndroidTest` |
 
-The fake Proxmox API used by both integration and end-to-end tests lives in `app/src/testShared`.
-GitHub Actions runs all three on every push ([android.yml](.github/workflows/android.yml)); the debug APK is
-attached to each run as an artifact.
+The fakes (Proxmox API, iDRAC web interface) and the end-to-end tests live in `app/src/sharedTest`, which is part
+of both the JVM tests and the on-device tests. GitHub Actions runs everything on every push, including the
+end-to-end tests on an Android emulator ([android.yml](.github/workflows/android.yml)); the debug APK is attached
+to each run as an artifact.
 
 ### Releases
 

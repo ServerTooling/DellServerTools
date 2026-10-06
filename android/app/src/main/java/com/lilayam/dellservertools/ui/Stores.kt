@@ -1,5 +1,6 @@
 package com.lilayam.dellservertools.ui
 
+import android.app.Application
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -13,8 +14,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** Saved server profiles (no secrets), in app-private storage. */
-class ProfileStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences("profiles", Context.MODE_PRIVATE)
+class ProfileStore(app: Application) {
+    private val prefs = app.getSharedPreferences("profiles", Context.MODE_PRIVATE)
 
     fun load(): List<ServerProfile> = ServerProfile.listFromJson(prefs.getString(KEY, null))
 
@@ -33,8 +34,8 @@ enum class SecretKind { PASSWORD, API_TOKEN }
  * Passwords and API token secrets, encrypted with an AES key that never leaves
  * the Android Keystore.
  */
-class SecretStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences("secrets", Context.MODE_PRIVATE)
+class SecretStore(app: Application) {
+    private val prefs = app.getSharedPreferences("secrets", Context.MODE_PRIVATE)
 
     fun load(profileId: String, kind: SecretKind): String? =
         prefs.getString(key(profileId, kind), null)?.let(::decrypt)
@@ -90,8 +91,8 @@ class SecretStore(context: Context) {
 }
 
 /** Approved SSH host keys and pinned TLS certificates (trust on first use). */
-class TrustStore(context: Context) : HostKeyStore {
-    private val prefs = context.applicationContext.getSharedPreferences("trust", Context.MODE_PRIVATE)
+class TrustStore(app: Application) : HostKeyStore {
+    private val prefs = app.getSharedPreferences("trust", Context.MODE_PRIVATE)
 
     override fun fingerprintFor(hostId: String): String? = prefs.getString(hostId, null)
 
