@@ -140,9 +140,10 @@ cd android
 | End-to-end | `app/src/sharedTest/.../e2e` | The real app driven through its UI: add/edit/delete servers, `viewer.jnlp` import, password prompt and connection errors, the iDRAC screen preview (certificate approval, image, logout), and a full Proxmox flow (certificate approval, overview, starting a VM and following its task, tasks and node screens) against fake servers running in the test | On the JVM with Robolectric: `./gradlew testDebugUnitTest`. On a device or emulator: `./gradlew connectedDebugAndroidTest` |
 
 The fakes (Proxmox API, iDRAC web interface) and the end-to-end tests live in `app/src/sharedTest`, which is part
-of both the JVM tests and the on-device tests. GitHub Actions runs everything on every push, including the
-end-to-end tests on an Android emulator ([android.yml](.github/workflows/android.yml)); the debug APK is attached
-to each run as an artifact.
+of both the JVM tests and the on-device tests. GitHub Actions runs the unit, integration and end-to-end tests
+(the end-to-end tests on the JVM via Robolectric) on every push ([android.yml](.github/workflows/android.yml)),
+and attaches the debug APK to each run as an artifact. The on-device emulator run is a manual
+(`workflow_dispatch`) job, as the GitHub-hosted emulator is unreliable to boot.
 
 ### Releases
 

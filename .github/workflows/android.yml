@@ -58,6 +58,12 @@ jobs:
 
   e2e:
     name: End-to-end UI tests (emulator)
+    # The same Compose end-to-end tests run on the JVM via Robolectric in the
+    # job above on every push and PR, so they gate the build there. The
+    # GitHub-hosted emulator is unreliable to boot on the runners, so the
+    # on-device pass runs only on demand (Actions → this workflow → Run
+    # workflow) rather than failing every build.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 

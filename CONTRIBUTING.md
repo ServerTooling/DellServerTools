@@ -53,8 +53,11 @@ cd android
 
 `./gradlew` is a bootstrap script that downloads Gradle on first use.
 
-GitHub Actions runs the unit/integration suite and an emulator E2E job on every
-push and pull request; please make sure both are green.
+GitHub Actions runs the unit/integration suite — which includes the Compose
+end-to-end tests on the JVM via Robolectric — on every push and pull request;
+please make sure it is green. The on-device emulator E2E pass is a manual job
+(Actions → Android → *Run workflow*), since the GitHub-hosted emulator is
+unreliable to boot.
 
 ## Tests are required
 
