@@ -55,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -110,16 +111,16 @@ fun HomeScreen(profiles: List<ServerProfile>, vm: ServersViewModel) {
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        IconButton(onClick = { vm.edit(profile) }) { Icon(Icons.Filled.Edit, "Edit") }
+                        IconButton(onClick = { vm.edit(profile) }) { Icon(Icons.Filled.Edit, "Edit ${profile.displayName}") }
                     }
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    Button(onClick = { vm.newProfile(ServerType.IDRAC6) }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { vm.newProfile(ServerType.IDRAC6) }, modifier = Modifier.fillMaxWidth().testTag("add-idrac")) {
                         Text("Add iDRAC6")
                     }
-                    Button(onClick = { vm.newProfile(ServerType.PROXMOX) }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { vm.newProfile(ServerType.PROXMOX) }, modifier = Modifier.fillMaxWidth().testTag("add-proxmox")) {
                         Text("Add Proxmox VE server")
                     }
                     OutlinedButton(onClick = { pickFile.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) {
@@ -173,7 +174,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                 label = { Text("Name (optional)") },
                 placeholder = { Text(if (isIdrac) "R710 iDRAC" else "Proxmox") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("field-name"),
             )
             OutlinedTextField(
                 value = host,
@@ -182,7 +183,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                 placeholder = { Text("192.168.1.10") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("field-host"),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -191,7 +192,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                     label = { Text("Username") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("field-username"),
                 )
                 OutlinedTextField(
                     value = port,
@@ -200,7 +201,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                     singleLine = true,
                     isError = portValue == null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.width(110.dp),
+                    modifier = Modifier.width(110.dp).testTag("field-port"),
                 )
             }
             OutlinedTextField(
@@ -219,10 +220,10 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                         )
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("field-password"),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = remember, onCheckedChange = { remember = it })
+                Checkbox(checked = remember, onCheckedChange = { remember = it }, modifier = Modifier.testTag("field-remember"))
                 Text("Remember password (encrypted with the Android Keystore)")
             }
 
@@ -250,7 +251,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                     singleLine = true,
                     isError = sshPortValue == null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("field-ssh-port"),
                 )
                 Text("API token (optional)", style = MaterialTheme.typography.labelLarge)
                 Text(
@@ -300,7 +301,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                     )
                 },
                 enabled = valid,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("save"),
             ) { Text("Save") }
             if (!screen.isNew) {
                 TextButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) {

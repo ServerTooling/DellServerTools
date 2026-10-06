@@ -14,6 +14,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
     }
 
     signingConfigs {
@@ -53,6 +56,12 @@ android {
         compose = true
     }
 
+    sourceSets {
+        // Fakes (e.g. the fake Proxmox API) shared by JVM integration tests and on-device E2E tests.
+        getByName("test").java.srcDir("src/testShared/java")
+        getByName("androidTest").java.srcDir("src/testShared/java")
+    }
+
     packaging {
         resources {
             // JSch is a multi-release jar; Android only uses the base classes.
@@ -63,7 +72,13 @@ android {
     testOptions {
         unitTests.all {
             it.useJUnitPlatform()
+            it.testLogging {
+                events("failed")
+                exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            }
         }
+        // Each end-to-end test starts from a clean app.
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 }
 
@@ -90,6 +105,22 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     // Real org.json for JVM unit tests (android.jar only has stubs).
     testImplementation("org.json:json:20250107")
+    // Integration tests: fake Proxmox HTTPS API and an in-process SSH server posing as an iDRAC6.
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
+    testImplementation("org.apache.sshd:sshd-core:2.15.0")
+    testRuntimeOnly("org.slf4j:slf4j-nop:2.0.16")
+
+    // End-to-end UI tests on a device / emulator.
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    androidTestImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0")
+    androidTestUtil("androidx.test:orchestrator:1.5.1")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

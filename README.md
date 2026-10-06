@@ -99,6 +99,18 @@ cd android
 
 `./gradlew` is a small bootstrap script that downloads Gradle 8.10.2 on first use.
 
+### Tests
+
+| Kind | Where | What it covers | Run |
+| --- | --- | --- | --- |
+| Unit | `app/src/test/.../core` | JNLP parsing, terminal emulator, profiles, Proxmox JSON, commands | `./gradlew testDebugUnitTest` |
+| Integration | `app/src/test/.../integration` | Proxmox client against a fake HTTPS Proxmox API (self-signed cert pinning, login, CSRF, ticket renewal, API tokens, tasks, snapshots); SSH against an in-process server that only speaks the iDRAC6's legacy algorithms (trust on first use, racadm, `console com2` and Ctrl+\, bad password, changed host key) | `./gradlew testDebugUnitTest` |
+| End-to-end | `app/src/androidTest/.../e2e` | The real app on an emulator: add/edit/delete servers, `viewer.jnlp` import, password prompt and connection errors, and a full Proxmox flow (certificate approval, overview, starting a VM and following its task, tasks and node screens) against a fake Proxmox API on the device | `./gradlew connectedDebugAndroidTest` (needs a device or emulator) |
+
+The fake Proxmox API used by both integration and end-to-end tests lives in `app/src/testShared`.
+GitHub Actions runs all three on every push ([android.yml](.github/workflows/android.yml)); the debug APK is
+attached to each run as an artifact.
+
 ### Releases
 
 Push a tag such as `v1.0.0`; the [Release workflow](.github/workflows/release.yml) builds the APK and attaches
