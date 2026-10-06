@@ -1,0 +1,50 @@
+#!/bin/sh
+
+set -eu
+
+APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+WRAPPER_PROPS="$APP_HOME/gradle/wrapper/gradle-wrapper.properties"
+
+if [ ! -f "$WRAPPER_PROPS" ]; then
+  echo "Missing $WRAPPER_PROPS" >&2
+  exit 1
+fi
+
+DISTRIBUTION_URL=$(sed -n 's/^distributionUrl=//p' "$WRAPPER_PROPS" | tail -n 1)
+DISTRIBUTION_URL=$(printf '%s' "$DISTRIBUTION_URL" | sed 's#\\:#:#g')
+if [ -z "$DISTRIBUTION_URL" ]; then
+  echo "distributionUrl is not set in $WRAPPER_PROPS" >&2
+  exit 1
+fi
+
+GRADLE_USER_HOME=${GRADLE_USER_HOME:-"$APP_HOME/.gradle"}
+BOOTSTRAP_DIR="$GRADLE_USER_HOME/bootstrap"
+mkdir -p "$BOOTSTRAP_DIR"
+
+DIST_FILE="$BOOTSTRAP_DIR/$(basename "$DISTRIBUTION_URL")"
+DIST_NAME=$(basename "$DIST_FILE" .zip)
+DIST_DIR="$BOOTSTRAP_DIR/$(printf '%s' "$DIST_NAME" | sed 's/-bin$//')"
+
+download() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$DISTRIBUTION_URL" -o "$DIST_FILE"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q "$DISTRIBUTION_URL" -O "$DIST_FILE"
+  else
+    echo "Neither curl nor wget is installed." >&2
+    exit 1
+  fi
+}
+
+if [ ! -f "$DIST_FILE" ]; then
+  echo "Downloading Gradle distribution $DISTRIBUTION_URL"
+  download
+fi
+
+if [ ! -d "$DIST_DIR" ]; then
+  echo "Extracting $DIST_FILE"
+  rm -rf "$DIST_DIR"
+  unzip -qo "$DIST_FILE" -d "$BOOTSTRAP_DIR"
+fi
+
+exec "$DIST_DIR/bin/gradle" -p "$APP_HOME" "$@"
