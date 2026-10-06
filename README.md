@@ -104,6 +104,14 @@ screen preview opens it inside the app (full keyboard and mouse, including the B
 - The iDRAC6 only supports old SSH algorithms (SHA-1 key exchange, `ssh-rsa`/`ssh-dss`, CBC ciphers).
   They are enabled for iDRAC6 connections only. Keep the iDRAC on a trusted management network.
 
+## Stuck at a BIOS / F1 prompt? (PC console)
+
+When the server is halted at a BIOS prompt (e.g. "Strike the F1 key to continue")
+there is no OS or serial console yet, so the phone can't send the keystroke. Use
+[`pc-console/`](pc-console) to run Dell's graphical Virtual Console from a PC once,
+press F1/F2, and enable serial console redirection so the phone can take over from
+then on.
+
 ## Build from source
 
 Needs JDK 17 and the Android SDK (platform 35).

@@ -1,0 +1,4 @@
+# Never commit: viewer.jnlp carries one-time iDRAC session tokens,
+# and runtime/ holds the downloaded Dell viewer + a private JRE.
+*.jnlp
+runtime/
