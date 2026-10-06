@@ -89,8 +89,8 @@ fun CreateCtScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
             if (hostname.isBlank()) hostname = "ct-${opts.nextVmid}"
             if (template.isBlank()) template = opts.templates.firstOrNull { it.name.contains("debian") }?.volid
                 ?: opts.templates.firstOrNull()?.volid.orEmpty()
-            if (storage.isBlank()) storage = opts.rootStorages.firstOrNull { it.contains("zfs") }
-                ?: opts.rootStorages.firstOrNull().orEmpty()
+            if (storage.isBlank()) storage = opts.ctStorages.firstOrNull { it.contains("zfs") }
+                ?: opts.ctStorages.firstOrNull().orEmpty()
             if (bridge.isBlank()) bridge = opts.bridges.firstOrNull().orEmpty()
         }
     }
@@ -162,7 +162,7 @@ fun CreateCtScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
             }
             OutlinedButton(onClick = { showDownload = true }) { Text("Download a template…") }
 
-            Dropdown("Disk storage", opts.rootStorages.map { it to it }, storage) { storage = it }
+            Dropdown("Disk storage", opts.ctStorages.map { it to it }, storage) { storage = it }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 NumField(disk, { disk = it.filter(Char::isDigit).take(5) }, "Disk GB", Modifier.weight(1f))
                 NumField(cores, { cores = it.filter(Char::isDigit).take(3) }, "Cores", Modifier.weight(1f))
@@ -277,7 +277,7 @@ private fun DownloadTemplateDialog(node: String, storage: String, vms: AppViewMo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Dropdown(label: String, items: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+internal fun Dropdown(label: String, items: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val shown = items.firstOrNull { it.first == selected }?.second ?: ""
     Column(Modifier.fillMaxWidth()) {
@@ -305,7 +305,7 @@ private fun Dropdown(label: String, items: List<Pair<String, String>>, selected:
 }
 
 @Composable
-private fun NumField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier) {
+internal fun NumField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
@@ -317,7 +317,7 @@ private fun NumField(value: String, onChange: (String) -> Unit, label: String, m
 }
 
 @Composable
-private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = checked, onCheckedChange = onChange)
         Text(label, style = MaterialTheme.typography.bodyMedium)
@@ -325,4 +325,4 @@ private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Uni
 }
 
 @Composable
-private fun Spacer8() = androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+internal fun Spacer8() = androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))

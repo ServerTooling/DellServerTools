@@ -17,7 +17,8 @@ class CreateCtE2ETest : ProxmoxE2ETestBase() {
         addServerAndConnect()
         waitForText("100 · web-01")
 
-        compose.onNodeWithContentDescription("Create container").performClick()
+        compose.onNodeWithContentDescription("Create container or VM").performClick()
+        compose.onNodeWithText("Container (LXC)").performClick()
         // Options load (templates, storage, bridges, next id).
         waitForText("New container on pve")
         waitForText("Create container")

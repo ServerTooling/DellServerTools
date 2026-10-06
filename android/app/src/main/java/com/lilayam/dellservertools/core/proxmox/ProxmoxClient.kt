@@ -121,6 +121,19 @@ class ProxmoxClient(
     fun templates(node: String, storage: String): List<TemplateFile> =
         ProxmoxJson.content(get("/nodes/${enc(node)}/storage/${enc(storage)}/content?content=vztmpl") as JSONArray)
 
+    /** ISO images (content=iso) on a storage. */
+    fun isoImages(node: String, storage: String): List<TemplateFile> =
+        ProxmoxJson.content(get("/nodes/${enc(node)}/storage/${enc(storage)}/content?content=iso") as JSONArray)
+
+    /** Creates a QEMU VM. Returns the task UPID. */
+    fun createQemu(node: String, params: Map<String, String>): String? =
+        post("/nodes/${enc(node)}/qemu", params) as? String
+
+    /** Changes config of an existing container or VM (synchronous PUT). */
+    fun updateConfig(node: String, type: GuestType, vmid: Int, params: Map<String, String>) {
+        if (params.isNotEmpty()) request("PUT", "${guestPath(node, type, vmid)}/config", params)
+    }
+
     /** Network bridges on the node. */
     fun bridges(node: String): List<String> =
         ProxmoxJson.bridges(get("/nodes/${enc(node)}/network?type=bridge") as JSONArray)

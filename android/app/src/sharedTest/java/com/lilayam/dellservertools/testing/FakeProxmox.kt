@@ -30,6 +30,12 @@ class FakeProxmox : AutoCloseable {
     @Volatile
     var lastCreateParams: Map<String, String> = emptyMap()
 
+    @Volatile
+    var lastVmCreateParams: Map<String, String> = emptyMap()
+
+    @Volatile
+    var lastConfigParams: Map<String, String> = emptyMap()
+
     /** Number of upcoming authenticated requests to reject with 401, as if the ticket expired. */
     val expireTicketTimes = AtomicInteger(0)
 
@@ -109,8 +115,10 @@ class FakeProxmox : AutoCloseable {
                   {"storage":"local-zfs","type":"zfspool","content":"rootdir,images","used":104,"total":207,"active":1}
                 ]""",
             )
-            path.startsWith("/nodes/pve/storage/local/content") ->
+            path.startsWith("/nodes/pve/storage/local/content") && path.contains("content=vztmpl") ->
                 json("""[{"volid":"local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst","size":130000000},{"volid":"local:vztmpl/alpine-3.20-default_20240908_amd64.tar.xz","size":3000000}]""")
+            path.startsWith("/nodes/pve/storage/local/content") && path.contains("content=iso") ->
+                json("""[{"volid":"local:iso/debian-12.7.0-amd64-netinst.iso","size":660000000}]""")
             path.startsWith("/nodes/pve/storage/") && path.contains("/content") -> json("[]")
             path == "/cluster/nextid" -> json("\"201\"")
             path.startsWith("/nodes/pve/network") -> json("""[{"iface":"vmbr0","type":"bridge"},{"iface":"vmbr1","type":"bridge"}]""")
@@ -120,6 +128,14 @@ class FakeProxmox : AutoCloseable {
             path == "/nodes/pve/lxc" && request.method == "POST" -> {
                 lastCreateParams = form(request)
                 json("\"UPID:pve:00000011:vzcreate:${form(request)["vmid"]}:root@pam:\"")
+            }
+            path == "/nodes/pve/qemu" && request.method == "POST" -> {
+                lastVmCreateParams = form(request)
+                json("\"UPID:pve:00000012:qmcreate:${form(request)["vmid"]}:root@pam:\"")
+            }
+            path.matches(Regex("/nodes/pve/(lxc|qemu)/\\d+/config")) && request.method == "PUT" -> {
+                lastConfigParams = form(request)
+                json("null")
             }
             path == "/nodes/pve/qemu/100/status/current" -> json(
                 """{"status":"$status","name":"web-01","cpus":2,"maxmem":2147483648,"mem":0,"uptime":${if (vmRunning.get()) 60 else 0}}""",

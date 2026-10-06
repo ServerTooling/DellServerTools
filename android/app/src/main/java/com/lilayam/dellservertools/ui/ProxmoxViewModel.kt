@@ -4,7 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lilayam.dellservertools.core.ServerProfile
+import com.lilayam.dellservertools.core.proxmox.GuestEdit
 import com.lilayam.dellservertools.core.proxmox.LxcRequest
+import com.lilayam.dellservertools.core.proxmox.VmRequest
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.GuestStatus
 import com.lilayam.dellservertools.core.proxmox.GuestType
@@ -64,17 +66,20 @@ data class ProxmoxUiState(
     /** Label of the action currently running, e.g. "Shutdown VM 100". */
     val busy: String? = null,
     val message: String? = null,
-    val createOptions: CreateCtOptions? = null,
+    val createOptions: GuestCreateOptions? = null,
 )
 
-/** What the Create-CT form needs: templates, storages, bridges and the next free id. */
-data class CreateCtOptions(
+/** What the create forms need: templates/ISOs, storages, bridges and the next free id. */
+data class GuestCreateOptions(
     val node: String,
     val loading: Boolean = true,
     val nextVmid: Int = 100,
-    val rootStorages: List<String> = emptyList(),
+    val ctStorages: List<String> = emptyList(),          // storages for a CT rootfs (rootdir)
+    val vmStorages: List<String> = emptyList(),          // storages for a VM disk (images)
     val templateStorages: List<String> = emptyList(),
     val templates: List<com.lilayam.dellservertools.core.proxmox.TemplateFile> = emptyList(),
+    val isoStorages: List<String> = emptyList(),
+    val isos: List<com.lilayam.dellservertools.core.proxmox.TemplateFile> = emptyList(),
     val bridges: List<String> = emptyList(),
     val error: String? = null,
 )
@@ -242,23 +247,26 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadCreateOptions(node: String) {
         val c = client ?: return
-        _state.update { it.copy(createOptions = CreateCtOptions(node = node, loading = true)) }
+        _state.update { it.copy(createOptions = GuestCreateOptions(node = node, loading = true)) }
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val nextId = c.nextVmid()
                     val storages = c.storage(node)
                     val tmplStorages = storages.filter { it.active && it.holds("vztmpl") }.map { it.storage }
-                    val rootStorages = storages.filter { it.active && (it.holds("rootdir") || it.holds("images")) }.map { it.storage }
+                    val isoStorages = storages.filter { it.active && it.holds("iso") }.map { it.storage }
+                    val ctStorages = storages.filter { it.active && it.holds("rootdir") }.map { it.storage }
+                    val vmStorages = storages.filter { it.active && it.holds("images") }.map { it.storage }
                     val templates = tmplStorages.flatMap { s -> runCatching { c.templates(node, s) }.getOrDefault(emptyList()) }
+                    val isos = isoStorages.flatMap { s -> runCatching { c.isoImages(node, s) }.getOrDefault(emptyList()) }
                     val bridges = runCatching { c.bridges(node) }.getOrDefault(emptyList()).ifEmpty { listOf("vmbr0") }
-                    CreateCtOptions(node, false, nextId, rootStorages, tmplStorages, templates, bridges)
+                    GuestCreateOptions(node, false, nextId, ctStorages, vmStorages, tmplStorages, templates, isoStorages, isos, bridges)
                 }
             }
             if (c !== client) return@launch
             result.onSuccess { opts -> _state.update { it.copy(createOptions = opts) } }
                 .onFailure { e ->
-                    _state.update { it.copy(createOptions = CreateCtOptions(node, loading = false, error = describe(e))) }
+                    _state.update { it.copy(createOptions = GuestCreateOptions(node, loading = false, error = describe(e))) }
                 }
         }
     }
@@ -270,6 +278,45 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         runTask("Create CT ${request.vmid} (${request.hostname})", node, refreshGuest = null, afterDone = onCreated) { c ->
             c.createLxc(node, request.toParams())
         }
+
+    fun createVm(node: String, request: VmRequest, onCreated: () -> Unit) =
+        runTask("Create VM ${request.vmid} (${request.name})", node, refreshGuest = null, afterDone = onCreated) { c ->
+            c.createQemu(node, request.toParams())
+        }
+
+    /** Applies config changes to an existing CT/VM, then reloads it. */
+    fun editGuest(
+        node: String,
+        type: GuestType,
+        vmid: Int,
+        edit: GuestEdit,
+        current: Map<String, String>,
+        onDone: () -> Unit,
+    ) {
+        val c = client ?: return
+        if (_state.value.busy != null) {
+            _state.update { it.copy(message = "Wait for \"${it.busy}\" to finish") }
+            return
+        }
+        val changes = edit.changedParams(current)
+        if (changes.isEmpty()) {
+            _state.update { it.copy(message = "No changes to save") }
+            onDone()
+            return
+        }
+        val label = "Update ${type.label} $vmid"
+        _state.update { it.copy(busy = label) }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { c.updateConfig(node, type, vmid, changes) } }
+            _state.update {
+                it.copy(busy = null, message = result.fold({ "$label: saved" }, { e -> "$label failed: ${describe(e)}" }))
+            }
+            if (result.isSuccess) {
+                loadGuest(node, type, vmid)
+                onDone()
+            }
+        }
+    }
 
     /** Downloads a template, then refreshes the template list in the open create form. */
     fun downloadTemplate(node: String, storage: String, template: String) {

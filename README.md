@@ -30,6 +30,11 @@ This app talks to the iDRAC over **SSH** instead:
 ### Proxmox VE
 
 - **Overview** of nodes, VMs, containers and storage with live CPU / RAM / disk usage (auto-refresh).
+- **Create** containers (LXC) and VMs (QEMU) from a form: ID, name/hostname, template or ISO,
+  storage, disk, CPU, memory, network (DHCP or static), unprivileged + nesting (for CI runners),
+  password / SSH key, start on create.
+- **Edit** an existing container or VM: hostname/name, cores, memory, swap/sockets, start-on-boot,
+  nesting (CT) or guest agent (VM), description.
 - **VMs and containers**: start, shut down, reboot, stop, pause/resume, reset; current status and
   configuration.
 - **Snapshots**: take, roll back, delete.

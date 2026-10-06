@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Terminal
@@ -102,6 +103,7 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
     ForwardMessages(state.message, vms) { vm.clearMessage() }
 
     var filter by rememberSaveable { mutableStateOf("all") }
+    var showCreate by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -117,12 +119,9 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
                     Icon(Icons.Filled.Public, "Full web interface")
                 }
                 IconButton(
-                    onClick = {
-                        val node = state.resources.firstOrNull { it.type == "node" }?.node
-                        if (node != null) vms.servers.navigate(Screen.CreateCt(profile.id, node))
-                    },
+                    onClick = { showCreate = true },
                     enabled = state.connected,
-                ) { Icon(Icons.Filled.Add, "Create container") }
+                ) { Icon(Icons.Filled.Add, "Create container or VM") }
                 IconButton(onClick = { vms.servers.openShell(profile) }) { Icon(Icons.Filled.Terminal, "SSH shell") }
                 IconButton(onClick = { vms.servers.navigate(Screen.Tasks(profile.id)) }, enabled = state.connected) {
                     Icon(Icons.AutoMirrored.Filled.List, "Tasks")
@@ -203,6 +202,27 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
                 items(storage, key = { it.id }) { s -> StorageRow(s.name, s.node, s.disk, s.maxDisk, s.status) }
             }
         }
+    }
+
+    if (showCreate) {
+        val node = state.resources.firstOrNull { it.type == "node" }?.node
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showCreate = false },
+            title = { Text("Create new…") },
+            text = { Text("On node ${node ?: "?"}") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCreate = false
+                    if (node != null) vms.servers.navigate(Screen.CreateCt(profile.id, node))
+                }) { Text("Container (LXC)") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showCreate = false
+                    if (node != null) vms.servers.navigate(Screen.CreateVm(profile.id, node))
+                }) { Text("Virtual machine") }
+            },
+        )
     }
 
     state.certPrompt?.let { prompt ->
@@ -499,6 +519,11 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                 }
             },
             navigationIcon = { IconButton(onClick = { vms.servers.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+            actions = {
+                IconButton(onClick = {
+                    vms.servers.navigate(Screen.EditGuest(profile.id, screen.node, screen.type, screen.vmid, screen.name))
+                }) { Icon(Icons.Filled.Edit, "Edit") }
+            },
         )
         BusyBar(state.busy)
         LazyColumn(

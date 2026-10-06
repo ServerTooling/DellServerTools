@@ -24,6 +24,8 @@ sealed interface Screen {
     data class Proxmox(val profileId: String) : Screen
     data class Node(val profileId: String, val node: String) : Screen
     data class CreateCt(val profileId: String, val node: String) : Screen
+    data class CreateVm(val profileId: String, val node: String) : Screen
+    data class EditGuest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
     data class Guest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
     data class Tasks(val profileId: String) : Screen
     data class TaskLog(val profileId: String, val node: String, val upid: String, val title: String) : Screen
