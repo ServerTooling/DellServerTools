@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.jcraft.jsch.JSchException
 import com.lilayam.dellservertools.core.ConnectionSettings
+import com.lilayam.dellservertools.core.IdracCommands
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.ServerType
 import com.lilayam.dellservertools.core.SshShellSession
@@ -23,6 +24,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class ConnectionStatus { DISCONNECTED, CONNECTING, CONNECTED }
 
@@ -54,6 +57,57 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     @Volatile
     private var dirty = false
+
+    @Volatile
+    private var connectedAt = 0L
+
+    private val consoleKeysLock = Mutex()
+    private val pendingConsoleKeys = StringBuilder()
+
+    /**
+     * Sends keys to the server itself through the iDRAC serial console: connects if needed and
+     * attaches with `console com2` when the iDRAC prompt is showing. They reach the BIOS only if
+     * its console redirection is on.
+     */
+    fun sendToServerConsole(profile: ServerProfile, password: String, keys: String) {
+        synchronized(pendingConsoleKeys) { pendingConsoleKeys.append(keys) }
+        ensureConnected(profile, password)
+        viewModelScope.launch(Dispatchers.IO) { consoleKeysLock.withLock { flushConsoleKeys(profile.id) } }
+    }
+
+    private suspend fun flushConsoleKeys(profileId: String) {
+        fun takePending() = synchronized(pendingConsoleKeys) {
+            pendingConsoleKeys.toString().also { pendingConsoleKeys.setLength(0) }
+        }
+
+        // Wait for the connection (and the first iDRAC prompt) to come up.
+        val deadline = System.currentTimeMillis() + CONSOLE_CONNECT_TIMEOUT_MS
+        while (true) {
+            val s = _state.value
+            val ready = s.profileId == profileId && s.status == ConnectionStatus.CONNECTED &&
+                (IdracCommands.isAtIdracPrompt(terminal.snapshot().lines) ||
+                    System.currentTimeMillis() - connectedAt > PROMPT_WAIT_MS)
+            if (ready) break
+            if (s.profileId != profileId || s.hostKeyPrompt != null || s.authFailed ||
+                (s.status == ConnectionStatus.DISCONNECTED && s.error != null) ||
+                System.currentTimeMillis() > deadline
+            ) {
+                takePending()
+                return
+            }
+            delay(200)
+        }
+        val current = session ?: return
+        val keys = takePending()
+        if (keys.isEmpty()) return
+        runCatching {
+            if (IdracCommands.isAtIdracPrompt(terminal.snapshot().lines)) {
+                current.send(IdracCommands.serialConsole.command + "\r")
+                delay(IdracCommands.SERIAL_CONSOLE_WAKE_DELAY_MS)
+            }
+            current.send(keys)
+        }.onFailure { e -> _state.update { it.copy(message = "Send failed: ${e.message}") } }
+    }
 
     /** Connects unless already connected/connecting to this same server. */
     fun ensureConnected(profile: ServerProfile, password: String) {
@@ -112,6 +166,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
             term.feed("Connected to ${settings.username}@${settings.host}\r\n")
             dirty = true
+            connectedAt = System.currentTimeMillis()
             _state.update { it.copy(status = ConnectionStatus.CONNECTED) }
             startRefreshing()
 
@@ -239,5 +294,8 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         const val COLUMNS = 80
         const val ROWS = 25
         private const val REFRESH_INTERVAL_MS = 60L
+        private const val CONSOLE_CONNECT_TIMEOUT_MS = 25_000L
+        /** How long to wait for the iDRAC's first prompt after connecting. */
+        private const val PROMPT_WAIT_MS = 4_000L
     }
 }

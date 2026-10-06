@@ -1,6 +1,7 @@
 package com.lilayam.dellservertools.core
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -16,6 +17,24 @@ class CommandsAndSshTest {
         ProxmoxShellCommands.quickCommands
             .filter { it.command.startsWith("reboot") || it.command.startsWith("shutdown") }
             .forEach { assertTrue(it.needsConfirmation, it.label) }
+    }
+
+    @Test
+    fun `detects the iDRAC prompt versus an attached serial console`() {
+        assertTrue(IdracCommands.isAtIdracPrompt(listOf("Connected to root@192.0.2.15", "/admin1-> ", "")))
+        assertTrue(IdracCommands.isAtIdracPrompt(listOf("/admin1/system1->")))
+        assertFalse(IdracCommands.isAtIdracPrompt(listOf("/admin1-> console com2", "Connected to Serial Device 2. To end type: ^\\")))
+        assertFalse(IdracCommands.isAtIdracPrompt(listOf("/admin1-> racadm getsysinfo", "Power Status = ON")))
+        assertFalse(IdracCommands.isAtIdracPrompt(emptyList()))
+    }
+
+    @Test
+    fun `screen keys use Dell's serial redirection sequences`() {
+        val keys = SpecialKeys.screen.associate { it.label to it.sequence }
+        assertEquals("\u001b1", keys["F1"])
+        assertEquals("\u001b2", keys["F2"])
+        assertEquals("\u001b@", keys["F12"])
+        assertEquals("\r", keys["Enter"])
     }
 
     @Test

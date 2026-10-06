@@ -24,6 +24,15 @@ object IdracCommands {
     /** Pressed shortly after attaching so a waiting login prompt is redrawn. */
     const val SERIAL_CONSOLE_WAKE_DELAY_MS = 1_500L
 
+    private val promptPattern = Regex("^/\\S*->\\s*$")
+
+    /**
+     * True when the last thing on screen is the iDRAC's own prompt (`/admin1->`), i.e. we're not
+     * attached to the server's serial console and keys would go to the iDRAC instead.
+     */
+    fun isAtIdracPrompt(lines: List<String>): Boolean =
+        lines.lastOrNull { it.isNotBlank() }?.trim()?.let { promptPattern.matches(it) } == true
+
     val quickCommands: List<QuickCommand> = listOf(
         serialConsole,
         QuickCommand("Power status", "racadm serveraction powerstatus", "Show whether the server is on or off."),
@@ -132,6 +141,7 @@ object SpecialKeys {
      * `<Esc><key>` sequences instead of VT220 function keys.
      */
     val bios: List<SpecialKey> = listOf(
+        SpecialKey("F1", "${ESC}1"),
         SpecialKey("F2 Setup", "${ESC}2"),
         SpecialKey("F10", "${ESC}0"),
         SpecialKey("F11 Boot", "$ESC!"),
@@ -141,4 +151,27 @@ object SpecialKeys {
         SpecialKey("Ctrl+S", "\u0013"),
         SpecialKey("Ctrl+Alt+Del", "${ESC}R${ESC}r${ESC}R"),
     )
+
+    /** Keys offered under the server screen: what POST, BIOS and boot menus need. */
+    val screen: List<SpecialKey> = listOf(
+        SpecialKey("F1", "${ESC}1"),
+        SpecialKey("F2", "${ESC}2"),
+        SpecialKey("F10", "${ESC}0"),
+        SpecialKey("F11", "$ESC!"),
+        SpecialKey("F12", "$ESC@"),
+        SpecialKey("Enter", "\r"),
+        SpecialKey("Esc", ESC),
+        SpecialKey("↑", "$ESC[A"),
+        SpecialKey("↓", "$ESC[B"),
+        SpecialKey("←", "$ESC[D"),
+        SpecialKey("→", "$ESC[C"),
+        SpecialKey("Space", " "),
+        SpecialKey("Tab", "\t"),
+        SpecialKey("Y", "y"),
+        SpecialKey("N", "n"),
+        SpecialKey("Ctrl+E", "\u0005"),
+    )
+
+    /** Dell's reset sequence over serial redirection; reboots the server. */
+    val ctrlAltDel = SpecialKey("Ctrl+Alt+Del", "${ESC}R${ESC}r${ESC}R")
 }

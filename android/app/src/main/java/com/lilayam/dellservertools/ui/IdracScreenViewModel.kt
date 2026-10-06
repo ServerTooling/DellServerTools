@@ -90,6 +90,14 @@ class IdracScreenViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    /** Refresh shortly after a key press so its effect shows up quickly. */
+    fun refreshSoon() {
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(KEY_REFRESH_DELAY_MS)
+            refresh()
+        }
+    }
+
     fun acceptCertificate() {
         val prompt = _state.value.certPrompt ?: return
         val p = profile ?: return
@@ -141,6 +149,8 @@ class IdracScreenViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private companion object {
+        const val KEY_REFRESH_DELAY_MS = 2_000L
+
         fun tlsId(profile: ServerProfile) = TrustStore.tlsId(profile.host, profile.webPort)
     }
 }
