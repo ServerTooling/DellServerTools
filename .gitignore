@@ -1,0 +1,21 @@
+# Gradle / Android Studio
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/**/build/
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing material and local settings
+*.jks
+*.keystore
+keystore.properties
+.env
+
+# iDRAC viewer files contain session tokens and addresses
+*.jnlp
+
+.DS_Store
