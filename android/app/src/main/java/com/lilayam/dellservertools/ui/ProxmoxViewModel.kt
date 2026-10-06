@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lilayam.dellservertools.core.ServerProfile
+import com.lilayam.dellservertools.core.proxmox.CloneRequest
 import com.lilayam.dellservertools.core.proxmox.GuestEdit
 import com.lilayam.dellservertools.core.proxmox.LxcRequest
 import com.lilayam.dellservertools.core.proxmox.VmRequest
@@ -288,6 +289,12 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
     fun createVm(node: String, request: VmRequest, onCreated: () -> Unit) =
         runTask("Create VM ${request.vmid} (${request.name})", node, refreshGuest = null, afterDone = onCreated) { c ->
             c.createQemu(node, request.toParams())
+        }
+
+    /** Clones a CT/VM and, on success, reports it and refreshes the list. */
+    fun cloneGuest(node: String, type: GuestType, vmid: Int, request: CloneRequest, onCloned: () -> Unit) =
+        runTask("Clone ${type.label} $vmid to ${request.newId}", node, refreshGuest = null, afterDone = onCloned) { c ->
+            c.cloneGuest(node, type, vmid, request.toParams())
         }
 
     /** Applies config changes to an existing CT/VM, then reloads it. */
