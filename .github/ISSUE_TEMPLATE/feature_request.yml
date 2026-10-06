@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest a new feature or improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Planned native-feature work is tracked in issue #1 and its sub-issues —
+        please check there first to avoid duplicates.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that the app doesn't let you do today?
+      placeholder: When I … I have to drop into the embedded web UI because …
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What should the app do? Describe the screen or action you have in mind.
+    validations:
+      required: true
+  - type: input
+    id: api
+    attributes:
+      label: Which Proxmox / iDRAC API or command does it need?
+      description: If you know, the REST endpoint, `racadm`/SSH command or web action it maps to.
+      placeholder: POST /nodes/{node}/{qemu|lxc}/{vmid}/clone
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Anything else you tried or thought about (optional).
+    validations:
+      required: false
