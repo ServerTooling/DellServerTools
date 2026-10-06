@@ -395,7 +395,7 @@ fun AppHelpDialog(onDismiss: () -> Unit) {
                         "warned if they change.",
                 )
                 Text(
-                    "Open source (Apache-2.0): github.com/lilayam/DellServerTools",
+                    "Open source (Apache-2.0): github.com/ServerTooling/DellServerTools",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                 )
