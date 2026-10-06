@@ -39,6 +39,12 @@ class FakeProxmox : AutoCloseable {
     @Volatile
     var deleted: Pair<String, Int>? = null  // (type, vmid)
 
+    @Volatile
+    var lastCloneParams: Map<String, String> = emptyMap()
+
+    @Volatile
+    var cloned: Pair<String, Int>? = null  // (type, source vmid)
+
     /** Number of upcoming authenticated requests to reject with 401, as if the ticket expired. */
     val expireTicketTimes = AtomicInteger(0)
 
@@ -135,6 +141,12 @@ class FakeProxmox : AutoCloseable {
             path == "/nodes/pve/qemu" && request.method == "POST" -> {
                 lastVmCreateParams = form(request)
                 json("\"UPID:pve:00000012:qmcreate:${form(request)["vmid"]}:root@pam:\"")
+            }
+            Regex("/nodes/pve/(lxc|qemu)/(\\d+)/clone").matches(path.substringBefore('?')) && request.method == "POST" -> {
+                val m = Regex("/nodes/pve/(lxc|qemu)/(\\d+)/clone").find(path.substringBefore('?'))!!
+                lastCloneParams = form(request)
+                cloned = m.groupValues[1] to m.groupValues[2].toInt()
+                json("\"UPID:pve:00000014:${if (m.groupValues[1] == "qemu") "qmclone" else "vzclone"}:${m.groupValues[2]}:root@pam:\"")
             }
             path.matches(Regex("/nodes/pve/(lxc|qemu)/\\d+/config")) && request.method == "PUT" -> {
                 lastConfigParams = form(request)

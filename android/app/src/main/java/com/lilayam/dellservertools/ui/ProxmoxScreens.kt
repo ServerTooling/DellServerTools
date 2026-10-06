@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Public
@@ -529,6 +530,9 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                 IconButton(onClick = {
                     vms.servers.navigate(Screen.EditGuest(profile.id, screen.node, screen.type, screen.vmid, screen.name))
                 }) { Icon(Icons.Filled.Edit, "Edit") }
+                IconButton(onClick = {
+                    vms.servers.navigate(Screen.CloneGuest(profile.id, screen.node, screen.type, screen.vmid, screen.name))
+                }) { Icon(Icons.Filled.ContentCopy, "Clone") }
                 IconButton(onClick = { showDelete = true }, enabled = state.busy == null) {
                     Icon(Icons.Filled.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
                 }

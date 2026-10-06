@@ -158,6 +158,10 @@ class ProxmoxClient(
     fun createLxc(node: String, params: Map<String, String>): String? =
         post("/nodes/${enc(node)}/lxc", params) as? String
 
+    /** Clones a container or VM. Returns the task UPID. */
+    fun cloneGuest(node: String, type: GuestType, vmid: Int, params: Map<String, String>): String? =
+        post("${guestPath(node, type, vmid)}/clone", params) as? String
+
     fun tasks(node: String, limit: Int = 50): List<TaskSummary> =
         ProxmoxJson.tasks(get("/nodes/${enc(node)}/tasks?limit=$limit") as JSONArray)
 
