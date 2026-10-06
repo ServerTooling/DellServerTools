@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Terminal
@@ -115,6 +116,13 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
                 IconButton(onClick = { openWebUi(profile, vms) }, enabled = state.connected) {
                     Icon(Icons.Filled.Public, "Full web interface")
                 }
+                IconButton(
+                    onClick = {
+                        val node = state.resources.firstOrNull { it.type == "node" }?.node
+                        if (node != null) vms.servers.navigate(Screen.CreateCt(profile.id, node))
+                    },
+                    enabled = state.connected,
+                ) { Icon(Icons.Filled.Add, "Create container") }
                 IconButton(onClick = { vms.servers.openShell(profile) }) { Icon(Icons.Filled.Terminal, "SSH shell") }
                 IconButton(onClick = { vms.servers.navigate(Screen.Tasks(profile.id)) }, enabled = state.connected) {
                     Icon(Icons.AutoMirrored.Filled.List, "Tasks")
@@ -296,7 +304,7 @@ private fun StorageRow(name: String, node: String, used: Long, total: Long, stat
 }
 
 @Composable
-private fun BusyBar(busy: String?) {
+internal fun BusyBar(busy: String?) {
     if (busy == null) return
     Column(Modifier.fillMaxWidth()) {
         LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -315,7 +323,7 @@ private fun AutoRefresh(enabled: Boolean, intervalMs: Long, refresh: () -> Unit)
 }
 
 @Composable
-private fun ForwardMessages(message: String?, vms: AppViewModels, clear: () -> Unit) {
+internal fun ForwardMessages(message: String?, vms: AppViewModels, clear: () -> Unit) {
     LaunchedEffect(message) {
         message?.let {
             vms.servers.showMessage(it)

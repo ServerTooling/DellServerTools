@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lilayam.dellservertools.core.ServerProfile
+import com.lilayam.dellservertools.core.proxmox.LxcRequest
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.GuestStatus
 import com.lilayam.dellservertools.core.proxmox.GuestType
@@ -63,6 +64,19 @@ data class ProxmoxUiState(
     /** Label of the action currently running, e.g. "Shutdown VM 100". */
     val busy: String? = null,
     val message: String? = null,
+    val createOptions: CreateCtOptions? = null,
+)
+
+/** What the Create-CT form needs: templates, storages, bridges and the next free id. */
+data class CreateCtOptions(
+    val node: String,
+    val loading: Boolean = true,
+    val nextVmid: Int = 100,
+    val rootStorages: List<String> = emptyList(),
+    val templateStorages: List<String> = emptyList(),
+    val templates: List<com.lilayam.dellservertools.core.proxmox.TemplateFile> = emptyList(),
+    val bridges: List<String> = emptyList(),
+    val error: String? = null,
 )
 
 /** Talks to one Proxmox VE server through its REST API. */
@@ -224,6 +238,53 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             c.backup(node, vmid, storage)
         }
 
+    // ------------------------------------------------------------ create CT
+
+    fun loadCreateOptions(node: String) {
+        val c = client ?: return
+        _state.update { it.copy(createOptions = CreateCtOptions(node = node, loading = true)) }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val nextId = c.nextVmid()
+                    val storages = c.storage(node)
+                    val tmplStorages = storages.filter { it.active && it.holds("vztmpl") }.map { it.storage }
+                    val rootStorages = storages.filter { it.active && (it.holds("rootdir") || it.holds("images")) }.map { it.storage }
+                    val templates = tmplStorages.flatMap { s -> runCatching { c.templates(node, s) }.getOrDefault(emptyList()) }
+                    val bridges = runCatching { c.bridges(node) }.getOrDefault(emptyList()).ifEmpty { listOf("vmbr0") }
+                    CreateCtOptions(node, false, nextId, rootStorages, tmplStorages, templates, bridges)
+                }
+            }
+            if (c !== client) return@launch
+            result.onSuccess { opts -> _state.update { it.copy(createOptions = opts) } }
+                .onFailure { e ->
+                    _state.update { it.copy(createOptions = CreateCtOptions(node, loading = false, error = describe(e))) }
+                }
+        }
+    }
+
+    fun clearCreateOptions() = _state.update { it.copy(createOptions = null) }
+
+    /** Creates the container and, on success, reports it and refreshes the list. */
+    fun createContainer(node: String, request: LxcRequest, onCreated: () -> Unit) =
+        runTask("Create CT ${request.vmid} (${request.hostname})", node, refreshGuest = null, afterDone = onCreated) { c ->
+            c.createLxc(node, request.toParams())
+        }
+
+    /** Downloads a template, then refreshes the template list in the open create form. */
+    fun downloadTemplate(node: String, storage: String, template: String) {
+        val label = "Download ${template.substringAfterLast('/')}"
+        runTask(label, node, refreshGuest = null, afterDone = { loadCreateOptions(node) }) { c ->
+            c.downloadTemplate(node, storage, template)
+        }
+    }
+
+    /** The `pveam available` list, for the download picker. */
+    suspend fun availableTemplates(node: String): List<com.lilayam.dellservertools.core.proxmox.AplTemplate> {
+        val c = client ?: return emptyList()
+        return withContext(Dispatchers.IO) { runCatching { c.availableTemplates(node) }.getOrDefault(emptyList()) }
+    }
+
     fun nodeCommand(node: String, command: String, label: String) {
         val c = client ?: return
         _state.update { it.copy(busy = label) }
@@ -245,6 +306,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         label: String,
         node: String,
         refreshGuest: Triple<String, GuestType, Int>?,
+        afterDone: (() -> Unit)? = null,
         start: (ProxmoxClient) -> String?,
     ) {
         val c = client ?: return
@@ -276,6 +338,8 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             _state.update { it.copy(busy = null, message = message) }
             refreshResources()
             refreshGuest?.let { (n, t, id) -> loadGuest(n, t, id) }
+            val succeeded = outcome.getOrNull()?.let { it == "OK" || it == "done" } == true
+            if (succeeded) afterDone?.invoke()
         }
     }
 

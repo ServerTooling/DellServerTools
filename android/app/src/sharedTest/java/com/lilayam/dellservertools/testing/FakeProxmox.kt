@@ -27,6 +27,9 @@ class FakeProxmox : AutoCloseable {
     val vmRunning = AtomicBoolean(false)
     val logins = AtomicInteger(0)
 
+    @Volatile
+    var lastCreateParams: Map<String, String> = emptyMap()
+
     /** Number of upcoming authenticated requests to reject with 401, as if the ticket expired. */
     val expireTicketTimes = AtomicInteger(0)
 
@@ -100,7 +103,24 @@ class FakeProxmox : AutoCloseable {
                 """{"cpu":0.03,"uptime":7200,"loadavg":["0.1","0.2","0.3"],"pveversion":"pve-manager/8.2.4","kversion":"Linux 6.8",
                    "memory":{"used":1,"total":2},"swap":{"used":0,"total":0},"rootfs":{"used":1,"total":2},"cpuinfo":{"cpus":16,"model":"Xeon"}}""",
             )
-            path == "/nodes/pve/storage" -> json("""[{"storage":"local","type":"dir","content":"iso,backup","used":10,"total":100,"active":1}]""")
+            path == "/nodes/pve/storage" -> json(
+                """[
+                  {"storage":"local","type":"dir","content":"iso,backup,vztmpl","used":10,"total":100,"active":1},
+                  {"storage":"local-zfs","type":"zfspool","content":"rootdir,images","used":104,"total":207,"active":1}
+                ]""",
+            )
+            path.startsWith("/nodes/pve/storage/local/content") ->
+                json("""[{"volid":"local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst","size":130000000},{"volid":"local:vztmpl/alpine-3.20-default_20240908_amd64.tar.xz","size":3000000}]""")
+            path.startsWith("/nodes/pve/storage/") && path.contains("/content") -> json("[]")
+            path == "/cluster/nextid" -> json("\"201\"")
+            path.startsWith("/nodes/pve/network") -> json("""[{"iface":"vmbr0","type":"bridge"},{"iface":"vmbr1","type":"bridge"}]""")
+            path == "/nodes/pve/aplinfo" && request.method == "GET" ->
+                json("""[{"template":"system/debian-12-standard_12.7-1_amd64.tar.zst","os":"debian-12","section":"system","description":"Debian 12"},{"template":"system/alpine-3.20-default_20240908_amd64.tar.xz","os":"alpine","section":"system","description":"Alpine"}]""")
+            path == "/nodes/pve/aplinfo" && request.method == "POST" -> json("\"UPID:pve:00000010:download:local:root@pam:\"")
+            path == "/nodes/pve/lxc" && request.method == "POST" -> {
+                lastCreateParams = form(request)
+                json("\"UPID:pve:00000011:vzcreate:${form(request)["vmid"]}:root@pam:\"")
+            }
             path == "/nodes/pve/qemu/100/status/current" -> json(
                 """{"status":"$status","name":"web-01","cpus":2,"maxmem":2147483648,"mem":0,"uptime":${if (vmRunning.get()) 60 else 0}}""",
             )

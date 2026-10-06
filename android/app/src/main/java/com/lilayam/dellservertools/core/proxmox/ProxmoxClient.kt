@@ -112,6 +112,31 @@ class ProxmoxClient(
         return post("/nodes/${enc(node)}/vzdump", params) as? String
     }
 
+    // ---- container creation ----
+
+    /** Next free VM/CT id in the cluster. */
+    fun nextVmid(): Int = (get("/cluster/nextid") as? String)?.toIntOrNull() ?: 100
+
+    /** Already-downloaded templates (content=vztmpl) across a storage, as volids. */
+    fun templates(node: String, storage: String): List<TemplateFile> =
+        ProxmoxJson.content(get("/nodes/${enc(node)}/storage/${enc(storage)}/content?content=vztmpl") as JSONArray)
+
+    /** Network bridges on the node. */
+    fun bridges(node: String): List<String> =
+        ProxmoxJson.bridges(get("/nodes/${enc(node)}/network?type=bridge") as JSONArray)
+
+    /** Downloadable appliance templates (the `pveam available` list). */
+    fun availableTemplates(node: String): List<AplTemplate> =
+        ProxmoxJson.aplinfo(get("/nodes/${enc(node)}/aplinfo") as JSONArray)
+
+    /** Starts downloading a template into a storage. Returns the task UPID. */
+    fun downloadTemplate(node: String, storage: String, template: String): String? =
+        post("/nodes/${enc(node)}/aplinfo", mapOf("storage" to storage, "template" to template)) as? String
+
+    /** Creates an LXC container. Returns the task UPID. */
+    fun createLxc(node: String, params: Map<String, String>): String? =
+        post("/nodes/${enc(node)}/lxc", params) as? String
+
     fun tasks(node: String, limit: Int = 50): List<TaskSummary> =
         ProxmoxJson.tasks(get("/nodes/${enc(node)}/tasks?limit=$limit") as JSONArray)
 

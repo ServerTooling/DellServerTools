@@ -104,7 +104,20 @@ data class StorageInfo(
     val used: Long,
     val total: Long,
     val active: Boolean,
-)
+) {
+    fun holds(contentType: String) = content.contains(contentType)
+}
+
+/** A container template already present on a storage. */
+data class TemplateFile(val volid: String, val size: Long) {
+    /** The file name without the `storage:vztmpl/` prefix, e.g. `debian-12-standard_...tar.zst`. */
+    val name: String get() = volid.substringAfterLast('/')
+}
+
+/** A downloadable appliance template (from `pveam available`). */
+data class AplTemplate(val template: String, val os: String, val section: String, val description: String) {
+    val name: String get() = template.substringAfterLast('/')
+}
 
 /** Parsing of Proxmox API JSON (`{"data": ...}` already unwrapped). */
 object ProxmoxJson {
@@ -200,6 +213,22 @@ object ProxmoxJson {
 
     fun taskLog(data: JSONArray): List<String> =
         data.objects().sortedBy { it.optInt("n") }.map { it.optString("t") }
+
+    fun content(data: JSONArray): List<TemplateFile> = data.objects().map { o ->
+        TemplateFile(volid = o.optString("volid"), size = o.optLong("size"))
+    }.sortedByDescending { it.name }
+
+    fun bridges(data: JSONArray): List<String> =
+        data.objects().map { it.optString("iface") }.filter { it.isNotEmpty() }.sorted()
+
+    fun aplinfo(data: JSONArray): List<AplTemplate> = data.objects().map { o ->
+        AplTemplate(
+            template = o.optString("template"),
+            os = o.optString("os"),
+            section = o.optString("section"),
+            description = o.optString("description").trim(),
+        )
+    }.filter { it.template.isNotEmpty() }.sortedBy { it.name }
 
     fun storage(data: JSONArray): List<StorageInfo> = data.objects().map { o ->
         StorageInfo(
