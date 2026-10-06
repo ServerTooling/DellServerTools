@@ -134,6 +134,14 @@ class ProxmoxClient(
         if (params.isNotEmpty()) request("PUT", "${guestPath(node, type, vmid)}/config", params)
     }
 
+    /** Deletes a container or VM. Returns the task UPID. */
+    fun deleteGuest(node: String, type: GuestType, vmid: Int, purge: Boolean, destroyUnreferenced: Boolean): String? {
+        val params = mutableMapOf<String, String>()
+        if (purge) params["purge"] = "1"
+        if (destroyUnreferenced) params["destroy-unreferenced-disks"] = "1"
+        return request("DELETE", guestPath(node, type, vmid), params) as? String
+    }
+
     /** Network bridges on the node. */
     fun bridges(node: String): List<String> =
         ProxmoxJson.bridges(get("/nodes/${enc(node)}/network?type=bridge") as JSONArray)

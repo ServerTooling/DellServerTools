@@ -279,6 +279,12 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             c.createLxc(node, request.toParams())
         }
 
+    /** Deletes a CT/VM, then calls back (e.g. to leave the guest screen). */
+    fun deleteGuest(node: String, type: GuestType, vmid: Int, purge: Boolean, onDeleted: () -> Unit) =
+        runTask("Delete ${type.label} $vmid", node, refreshGuest = null, afterDone = onDeleted) { c ->
+            c.deleteGuest(node, type, vmid, purge = purge, destroyUnreferenced = purge)
+        }
+
     fun createVm(node: String, request: VmRequest, onCreated: () -> Unit) =
         runTask("Create VM ${request.vmid} (${request.name})", node, refreshGuest = null, afterDone = onCreated) { c ->
             c.createQemu(node, request.toParams())

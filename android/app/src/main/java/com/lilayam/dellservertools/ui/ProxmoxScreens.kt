@@ -19,10 +19,12 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
@@ -38,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -52,8 +55,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -490,6 +495,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
     var snapshotDialog by remember { mutableStateOf(false) }
     var backupDialog by remember { mutableStateOf(false) }
     var snapshotConfirm by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var showDelete by remember { mutableStateOf(false) }
 
     val actions = buildList {
         if (status == null) return@buildList
@@ -523,6 +529,9 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                 IconButton(onClick = {
                     vms.servers.navigate(Screen.EditGuest(profile.id, screen.node, screen.type, screen.vmid, screen.name))
                 }) { Icon(Icons.Filled.Edit, "Edit") }
+                IconButton(onClick = { showDelete = true }, enabled = state.busy == null) {
+                    Icon(Icons.Filled.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                }
             },
         )
         BusyBar(state.busy)
@@ -692,6 +701,72 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
             onDismiss = { backupDialog = false },
         )
     }
+    if (showDelete) {
+        DeleteGuestDialog(
+            kind = kind,
+            vmid = screen.vmid,
+            name = status?.name?.ifBlank { null } ?: screen.name,
+            running = status?.isRunning == true,
+            onDelete = { purge -> vm.deleteGuest(screen.node, screen.type, screen.vmid, purge) { vms.servers.back() } },
+            onDismiss = { showDelete = false },
+        )
+    }
+}
+
+@Composable
+private fun DeleteGuestDialog(
+    kind: String,
+    vmid: Int,
+    name: String,
+    running: Boolean,
+    onDelete: (purge: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var typed by remember { mutableStateOf("") }
+    var purge by remember { mutableStateOf(true) }
+    val confirmed = typed.trim() == vmid.toString()
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete $kind $vmid?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "This permanently destroys \"$name\" and its disks. It cannot be undone.",
+                    color = MaterialTheme.colorScheme.error,
+                )
+                if (running) {
+                    Text(
+                        "It is still running — stop it first, or the delete will be refused.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                OutlinedTextField(
+                    value = typed,
+                    onValueChange = { typed = it.filter(Char::isDigit) },
+                    label = { Text("Type the ID ($vmid) to confirm") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth().testTag("delete-confirm"),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = purge, onCheckedChange = { purge = it })
+                    Text("Also remove from backups and job configs (purge)", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDelete(purge)
+                    onDismiss()
+                },
+                enabled = confirmed,
+                modifier = Modifier.testTag("delete-go"),
+            ) { Text("Delete", color = if (confirmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 private val snapshotNamePattern = Regex("^[A-Za-z][A-Za-z0-9_-]{0,39}$")

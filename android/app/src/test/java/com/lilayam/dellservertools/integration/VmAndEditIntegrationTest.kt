@@ -60,4 +60,22 @@ class VmAndEditIntegrationTest {
         client.updateConfig("pve", GuestType.LXC, 200, emptyMap())
         assertTrue(pve.requestsTo("/lxc/200/config", "PUT").isEmpty())
     }
+
+    @Test
+    fun `deletes a vm with purge`() {
+        val upid = client.deleteGuest("pve", GuestType.QEMU, 100, purge = true, destroyUnreferenced = true)
+        assertTrue(upid!!.startsWith("UPID:pve:"))
+        assertEquals("qemu" to 100, pve.deleted)
+        val del = pve.requestsTo("/qemu/100", "DELETE").single()
+        assertTrue(del.path!!.contains("purge=1"))
+        assertTrue(del.path!!.contains("destroy-unreferenced-disks=1"))
+    }
+
+    @Test
+    fun `deletes a container without purge`() {
+        client.deleteGuest("pve", GuestType.LXC, 200, purge = false, destroyUnreferenced = false)
+        assertEquals("lxc" to 200, pve.deleted)
+        val del = pve.requestsTo("/lxc/200", "DELETE").single()
+        assertTrue(!del.path!!.contains("purge"))
+    }
 }

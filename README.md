@@ -35,6 +35,8 @@ This app talks to the iDRAC over **SSH** instead:
   password / SSH key, start on create.
 - **Edit** an existing container or VM: hostname/name, cores, memory, swap/sockets, start-on-boot,
   nesting (CT) or guest agent (VM), description.
+- **Delete** a container or VM: a confirm dialog that needs the ID typed, with an optional purge
+  (also remove it from backup jobs and replication).
 - **VMs and containers**: start, shut down, reboot, stop, pause/resume, reset; current status and
   configuration.
 - **Snapshots**: take, roll back, delete.

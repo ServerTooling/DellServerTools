@@ -36,6 +36,9 @@ class FakeProxmox : AutoCloseable {
     @Volatile
     var lastConfigParams: Map<String, String> = emptyMap()
 
+    @Volatile
+    var deleted: Pair<String, Int>? = null  // (type, vmid)
+
     /** Number of upcoming authenticated requests to reject with 401, as if the ticket expired. */
     val expireTicketTimes = AtomicInteger(0)
 
@@ -136,6 +139,11 @@ class FakeProxmox : AutoCloseable {
             path.matches(Regex("/nodes/pve/(lxc|qemu)/\\d+/config")) && request.method == "PUT" -> {
                 lastConfigParams = form(request)
                 json("null")
+            }
+            request.method == "DELETE" && Regex("/nodes/pve/(lxc|qemu)/\\d+").matches(path.substringBefore('?')) -> {
+                val m = Regex("/nodes/pve/(lxc|qemu)/(\\d+)").find(path.substringBefore('?'))!!
+                deleted = m.groupValues[1] to m.groupValues[2].toInt()
+                json("\"UPID:pve:00000013:${if (m.groupValues[1] == "qemu") "qmdestroy" else "vzdestroy"}:${m.groupValues[2]}:root@pam:\"")
             }
             path == "/nodes/pve/qemu/100/status/current" -> json(
                 """{"status":"$status","name":"web-01","cpus":2,"maxmem":2147483648,"mem":0,"uptime":${if (vmRunning.get()) 60 else 0}}""",
