@@ -62,6 +62,10 @@ fun WebScreen(profile: ServerProfile, screen: Screen.Web, vms: AppViewModels) {
     val context = LocalContext.current
     val proxmox = vms.proxmox
     val isProxmox = profile.type == ServerType.PROXMOX
+    // Proxmox noVNC/xterm.js console pages don't carry a mobile viewport, so the WebView lays
+    // them out wider than the screen and pushes noVNC's toolbar off the left edge. Fit them to
+    // the device width instead.
+    val isConsole = screen.url.contains("console=")
     val pinned = remember(profile) { if (isProxmox) proxmox.pinnedFingerprint(profile) else null }
     var progress by remember { mutableIntStateOf(0) }
     var mobile by rememberSaveable { mutableStateOf(false) }
@@ -76,7 +80,8 @@ fun WebScreen(profile: ServerProfile, screen: Screen.Web, vms: AppViewModels) {
         WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.useWideViewPort = true
+            // A console fits to the device width; the full web UI keeps the wide desktop viewport.
+            settings.useWideViewPort = !isConsole
             settings.loadWithOverviewMode = true
             settings.builtInZoomControls = true
             settings.displayZoomControls = false
@@ -90,6 +95,20 @@ fun WebScreen(profile: ServerProfile, screen: Screen.Web, vms: AppViewModels) {
                     } else {
                         handler.cancel()
                         vms.servers.showMessage("Blocked: the server's certificate doesn't match the trusted one.")
+                    }
+                }
+
+                override fun onPageFinished(view: WebView, url: String?) {
+                    // Console pages ship no mobile viewport; add one so noVNC/xterm.js fit the screen
+                    // and noVNC's toolbar (keyboard, Ctrl-Alt-Del, settings) stays reachable.
+                    if (isConsole) {
+                        view.evaluateJavascript(
+                            "(function(){var m=document.querySelector('meta[name=viewport]');" +
+                                "if(!m){m=document.createElement('meta');m.name='viewport';" +
+                                "(document.head||document.documentElement).appendChild(m);}" +
+                                "m.setAttribute('content','width=device-width, initial-scale=1, user-scalable=yes');})();",
+                            null,
+                        )
                     }
                 }
             }
