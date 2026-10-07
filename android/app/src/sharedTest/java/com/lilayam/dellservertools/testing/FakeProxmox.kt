@@ -161,6 +161,13 @@ class FakeProxmox : AutoCloseable {
                 """{"status":"$status","name":"web-01","cpus":2,"maxmem":2147483648,"mem":0,"uptime":${if (vmRunning.get()) 60 else 0}}""",
             )
             path == "/nodes/pve/qemu/100/config" -> json("""{"name":"web-01","memory":2048,"cores":2,"digest":"abc"}""")
+            path == "/nodes/pve/lxc/200/status/current" -> json(
+                """{"status":"running","name":"gh-runner-1","cpus":4,"maxmem":2147483648,"mem":20971520,"uptime":120}""",
+            )
+            path == "/nodes/pve/lxc/200/config" -> json(
+                """{"hostname":"gh-runner-1","memory":2048,"cores":4,"swap":512,"rootfs":"local-zfs:subvol-200-disk-0,size=16G","features":"nesting=1","digest":"abc"}""",
+            )
+            path == "/nodes/pve/lxc/200/snapshot" && request.method == "GET" -> json("[]")
             path == "/nodes/pve/qemu/100/snapshot" && request.method == "GET" ->
                 json("""[{"name":"current","running":0},{"name":"clean","snaptime":1700000000,"description":"fresh install"}]""")
             path == "/nodes/pve/qemu/100/snapshot" && request.method == "POST" -> json("\"UPID:pve:00000002:snapshot:100:root@pam:\"")

@@ -82,7 +82,7 @@ import com.lilayam.dellservertools.core.SpecialKeys
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TerminalScreen(profile: ServerProfile, vms: AppViewModels) {
+fun TerminalScreen(profile: ServerProfile, vms: AppViewModels, initialCommand: String? = null) {
     val vm = vms.terminal
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -114,6 +114,15 @@ fun TerminalScreen(profile: ServerProfile, vms: AppViewModels) {
     var showHelp by remember { mutableStateOf(false) }
     val connected = state.status == ConnectionStatus.CONNECTED && state.profileId == profile.id
     val lines = if (state.profileId == profile.id) state.lines else emptyList()
+
+    // Drop straight into a guest (e.g. `pct enter 103`) once the host shell is up, exactly once.
+    var initialSent by rememberSaveable(profile.id, initialCommand) { mutableStateOf(initialCommand.isNullOrBlank()) }
+    LaunchedEffect(connected, initialCommand) {
+        if (connected && !initialSent && !initialCommand.isNullOrBlank()) {
+            vm.sendLine(initialCommand)
+            initialSent = true
+        }
+    }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         TopAppBar(

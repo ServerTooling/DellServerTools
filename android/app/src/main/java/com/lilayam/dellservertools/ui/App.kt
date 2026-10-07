@@ -79,7 +79,7 @@ fun DellServerToolsApp(vms: AppViewModels, onExit: () -> Unit) {
                 when (val screen = state.screen) {
                     Screen.Home -> HomeScreen(state.profiles, vms.servers)
                     is Screen.Edit -> EditServerScreen(screen, vms.servers)
-                    is Screen.Terminal -> WithProfile(vms, screen.profileId) { TerminalScreen(it, vms) }
+                    is Screen.Terminal -> WithProfile(vms, screen.profileId) { TerminalScreen(it, vms, screen.initialCommand) }
                     is Screen.IdracScreen -> WithProfile(vms, screen.profileId) { IdracScreenScreen(it, vms) }
                     is Screen.Proxmox -> WithProfile(vms, screen.profileId) { ProxmoxHomeScreen(it, vms) }
                     is Screen.Node -> WithProfile(vms, screen.profileId) { NodeScreen(it, screen.node, vms) }

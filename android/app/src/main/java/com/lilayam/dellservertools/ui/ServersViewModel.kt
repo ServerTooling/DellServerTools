@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 sealed interface Screen {
     data object Home : Screen
     data class Edit(val profile: ServerProfile, val isNew: Boolean) : Screen
-    data class Terminal(val profileId: String) : Screen
+    data class Terminal(val profileId: String, val initialCommand: String? = null) : Screen
     data class IdracScreen(val profileId: String) : Screen
     data class Proxmox(val profileId: String) : Screen
     data class Node(val profileId: String, val node: String) : Screen
@@ -90,8 +90,9 @@ class ServersViewModel(application: Application) : AndroidViewModel(application)
     fun openScreen(profile: ServerProfile) =
         openWithPassword(profile, Screen.IdracScreen(profile.id), needsPassword = true)
 
-    /** SSH shell on the Proxmox host. */
-    fun openShell(profile: ServerProfile) = openWithPassword(profile, Screen.Terminal(profile.id), needsPassword = true)
+    /** SSH shell on the Proxmox host; [initialCommand], if given, is run once after it connects. */
+    fun openShell(profile: ServerProfile, initialCommand: String? = null) =
+        openWithPassword(profile, Screen.Terminal(profile.id, initialCommand), needsPassword = true)
 
     private fun openWithPassword(profile: ServerProfile, target: Screen, needsPassword: Boolean) {
         if (needsPassword && password(profile).isNullOrEmpty()) {

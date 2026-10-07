@@ -68,6 +68,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.Format
+import com.lilayam.dellservertools.core.proxmox.GuestShell
 import com.lilayam.dellservertools.core.proxmox.GuestType
 import java.text.DateFormat
 import java.util.Date
@@ -587,6 +588,13 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                                 Text(action.label, color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified)
                             }
                         }
+                    }
+                    GuestShell.enterCommand(screen.type, screen.vmid)?.let { shellCommand ->
+                        FilledTonalButton(
+                            onClick = { vms.servers.openShell(profile, shellCommand) },
+                            enabled = status?.isRunning == true,
+                            modifier = Modifier.testTag("guest-shell"),
+                        ) { Text("Shell") }
                     }
                     FilledTonalButton(
                         onClick = {
