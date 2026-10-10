@@ -191,7 +191,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                 value = host,
                 onValueChange = { host = it.trim() },
                 label = { Text(if (isIdrac) "iDRAC IP address" else "Proxmox IP address") },
-                placeholder = { Text("192.168.1.10") },
+                placeholder = { Text("192.0.2.10") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth().testTag("field-host"),
@@ -257,7 +257,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                     value = consoleUrl,
                     onValueChange = { consoleUrl = it.trim() },
                     label = { Text("Graphical console URL (optional)") },
-                    placeholder = { Text("http://192.168.1.20:5800") },
+                    placeholder = { Text("http://192.0.2.20:5800") },
                     supportingText = {
                         Text(
                             if (consoleUrlValid) {

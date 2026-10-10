@@ -41,8 +41,8 @@ class LxcRequestTest {
 
     @Test
     fun `static ip includes address and gateway`() {
-        val p = base().copy(useDhcp = false, staticCidr = "192.168.5.50/24", gateway = "192.168.5.1").toParams()
-        assertEquals("name=eth0,bridge=vmbr0,ip=192.168.5.50/24,gw=192.168.5.1", p["net0"])
+        val p = base().copy(useDhcp = false, staticCidr = "192.0.2.50/24", gateway = "192.0.2.1").toParams()
+        assertEquals("name=eth0,bridge=vmbr0,ip=192.0.2.50/24,gw=192.0.2.1", p["net0"])
     }
 
     @Test
