@@ -15,8 +15,8 @@ data class LxcRequest(
     val swapMb: Int,
     val bridge: String,                // e.g. "vmbr0"
     val useDhcp: Boolean,
-    val staticCidr: String = "",       // e.g. "192.168.5.50/24" when useDhcp is false
-    val gateway: String = "",          // e.g. "192.168.5.1"
+    val staticCidr: String = "",       // e.g. "192.0.2.50/24" when useDhcp is false
+    val gateway: String = "",          // e.g. "192.0.2.1"
     val unprivileged: Boolean = true,
     val nesting: Boolean = true,
     val password: String = "",
@@ -43,7 +43,7 @@ data class LxcRequest(
         if (cores < 1) return "At least 1 core"
         if (memoryMb < 16) return "At least 16 MB of memory"
         if (!useDhcp) {
-            if (!CIDR.matches(staticCidr)) return "Static IP must look like 192.168.1.50/24"
+            if (!CIDR.matches(staticCidr)) return "Static IP must look like 192.0.2.50/24"
         }
         if (password.isNotEmpty() && password.length < 5) return "Password must be at least 5 characters"
         if (password.isEmpty() && sshPublicKey.isBlank()) return "Set a root password or an SSH key"
