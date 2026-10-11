@@ -38,6 +38,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -65,16 +66,19 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.ServerType
+import com.lilayam.dellservertools.core.update.AppRelease
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(profiles: List<ServerProfile>, vm: ServersViewModel) {
+fun HomeScreen(profiles: List<ServerProfile>, vm: ServersViewModel, update: UpdateViewModel) {
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(vm::importJnlp)
     }
     var showHelp by remember { mutableStateOf(false) }
+    val updateState by update.state.collectAsStateWithLifecycle()
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -88,6 +92,9 @@ fun HomeScreen(profiles: List<ServerProfile>, vm: ServersViewModel) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.weight(1f),
         ) {
+            updateState.available?.let { release ->
+                item { UpdateCard(release, updateState.progress, update) }
+            }
             if (profiles.isEmpty()) {
                 item {
                     Text(
@@ -137,7 +144,42 @@ fun HomeScreen(profiles: List<ServerProfile>, vm: ServersViewModel) {
         }
     }
 
-    if (showHelp) AppHelpDialog(onDismiss = { showHelp = false })
+    if (showHelp) {
+        AppHelpDialog(
+            version = updateState.installedVersion,
+            checking = updateState.checking,
+            onCheckForUpdate = { update.checkForUpdate() },
+            onDismiss = { showHelp = false },
+        )
+    }
+}
+
+@Composable
+private fun UpdateCard(release: AppRelease, progress: Float?, update: UpdateViewModel) {
+    Card(Modifier.fillMaxWidth().testTag("update-card")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Update available: build ${release.versionCode}", fontWeight = FontWeight.SemiBold)
+            if (progress != null) {
+                if (progress >= 0f) {
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+                Text("Downloading…", style = MaterialTheme.typography.bodySmall)
+            } else {
+                Text(
+                    "Android asks you to confirm the install. Your servers and saved passwords are kept.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = update::downloadAndInstall, modifier = Modifier.testTag("update-install")) {
+                        Text("Update")
+                    }
+                    TextButton(onClick = update::dismiss) { Text("Later") }
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -365,7 +407,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
 }
 
 @Composable
-fun AppHelpDialog(onDismiss: () -> Unit) {
+fun AppHelpDialog(version: String, checking: Boolean, onCheckForUpdate: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("About") },
@@ -399,9 +441,15 @@ fun AppHelpDialog(onDismiss: () -> Unit) {
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                 )
+                Text("Version $version", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
+        dismissButton = {
+            TextButton(onClick = onCheckForUpdate, enabled = !checking, modifier = Modifier.testTag("check-update")) {
+                Text(if (checking) "Checking…" else "Check for updates")
+            }
+        },
     )
 }
 

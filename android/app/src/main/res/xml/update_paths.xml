@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Where downloaded app updates are kept for the Android installer (UpdateViewModel). -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>
