@@ -53,6 +53,13 @@ This app talks to the iDRAC over **SSH** instead:
 Download the latest APK from the [Releases](../../releases) page and open it on your phone
 (allow "Install unknown apps" for your browser or file manager when Android asks). Requires Android 8.0+.
 
+**Updates.** Every change merged to `main` is published as a new release. The app checks for one when it
+starts (and from **About → Check for updates**) and shows an **Update** card; tapping it downloads the APK
+and opens the Android installer, where you confirm. Android only installs an update signed with the same key
+as the installed app, so a build from your own PC (debug key) has to be uninstalled once before the first
+release build goes on. If you'd rather not have the app check, [Obtainium](https://github.com/ImranR98/Obtainium)
+can track this repository's releases instead.
+
 ## Setup
 
 ### iDRAC6
@@ -147,9 +154,11 @@ and attaches the debug APK to each run as an artifact. The on-device emulator ru
 
 ### Releases
 
-Push a tag such as `v1.0.0`; the [Release workflow](.github/workflows/release.yml) builds the APK and attaches
-it to a GitHub release. To sign releases with a stable key (so updates install over the previous version),
-add these repository secrets:
+The [Release workflow](.github/workflows/release.yml) publishes every push to `main` as a release named
+`build-<N>` (version code N, keeping the ten newest) and every `v*` tag under its own name. The APK asset is
+`DellServerTools-<versionCode>.apk`; the in-app updater reads the version code from that name. Nothing is
+published until these repository secrets hold the signing key, since every release must be signed with the
+same key for updates to install:
 
 | Secret | Value |
 | --- | --- |

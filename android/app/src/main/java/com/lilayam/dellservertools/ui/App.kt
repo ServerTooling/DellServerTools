@@ -46,6 +46,7 @@ class AppViewModels(
     val terminal: TerminalViewModel,
     val proxmox: ProxmoxViewModel,
     val idracScreen: IdracScreenViewModel,
+    val update: UpdateViewModel,
 )
 
 @Composable
@@ -59,6 +60,14 @@ fun DellServerToolsApp(vms: AppViewModels, onExit: () -> Unit) {
             state.message?.let {
                 snackbar.showSnackbar(it)
                 vms.servers.clearMessage()
+            }
+        }
+
+        val updateState by vms.update.state.collectAsStateWithLifecycle()
+        LaunchedEffect(updateState.message) {
+            updateState.message?.let {
+                snackbar.showSnackbar(it)
+                vms.update.clearMessage()
             }
         }
 
@@ -77,7 +86,7 @@ fun DellServerToolsApp(vms: AppViewModels, onExit: () -> Unit) {
                     .safeDrawingPadding(),
             ) {
                 when (val screen = state.screen) {
-                    Screen.Home -> HomeScreen(state.profiles, vms.servers)
+                    Screen.Home -> HomeScreen(state.profiles, vms.servers, vms.update)
                     is Screen.Edit -> EditServerScreen(screen, vms.servers)
                     is Screen.Terminal -> WithProfile(vms, screen.profileId) { TerminalScreen(it, vms, screen.initialCommand) }
                     is Screen.IdracScreen -> WithProfile(vms, screen.profileId) { IdracScreenScreen(it, vms) }
