@@ -54,8 +54,9 @@ Download the latest APK from the [Releases](../../releases) page and open it on 
 (allow "Install unknown apps" for your browser or file manager when Android asks). Requires Android 8.0+.
 
 **Updates.** Every change merged to `main` is published as a new release. The app checks for one when it
-starts (and from **About → Check for updates**) and shows an **Update** card; tapping it downloads the APK
-and opens the Android installer, where you confirm. Android only installs an update signed with the same key
+starts (and from **About → Check for updates**) and shows an **Update** card; tapping it downloads and installs
+the new version. Android asks you to confirm the first time; from then on (Android 12+) the app is its own
+installer and updates install without a prompt. Android only installs an update signed with the same key
 as the installed app, so a build from your own PC (debug key) has to be uninstalled once before the first
 release build goes on. If you'd rather not have the app check, [Obtainium](https://github.com/ImranR98/Obtainium)
 can track this repository's releases instead.

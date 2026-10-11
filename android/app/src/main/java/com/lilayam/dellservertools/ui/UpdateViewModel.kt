@@ -1,10 +1,8 @@
 package com.lilayam.dellservertools.ui
 
 import android.app.Application
-import android.content.Intent
 import android.content.pm.ApplicationInfo
 import androidx.annotation.VisibleForTesting
-import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -28,7 +26,7 @@ data class UpdateUiState(
     val message: String? = null,
 )
 
-/** Checks GitHub for a newer build and hands the downloaded APK to the Android installer. */
+/** Checks GitHub for a newer build, downloads it and installs it through [UpdateInstaller]. */
 class UpdateViewModel(application: Application) : AndroidViewModel(application) {
     private val installedCode: Long
     private val _state: MutableStateFlow<UpdateUiState>
@@ -78,20 +76,13 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
         val apk = File(File(app.cacheDir, "updates"), "DellServerTools.apk")
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching { AppUpdate.download(release, apk) { p -> _state.update { it.copy(progress = p) } } }
+                runCatching {
+                    AppUpdate.download(release, apk) { p -> _state.update { it.copy(progress = p) } }
+                    UpdateInstaller.install(app, apk)
+                }
             }
             _state.update { it.copy(progress = null) }
-            result.onSuccess {
-                val uri = FileProvider.getUriForFile(app, "${app.packageName}.updates", apk)
-                // Android asks the user to confirm, and to allow installs from this app the first time.
-                val install = Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, "application/vnd.android.package-archive")
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                runCatching { app.startActivity(install) }
-                    .onFailure { e -> _state.update { it.copy(message = "Could not open the installer: ${e.message}") } }
-            }.onFailure { e ->
-                _state.update { it.copy(message = "Update download failed: ${e.message}") }
-            }
+            result.onFailure { e -> _state.update { it.copy(message = "Update failed: ${e.message}") } }
         }
     }
 

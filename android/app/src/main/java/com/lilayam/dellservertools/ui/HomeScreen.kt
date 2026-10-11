@@ -168,7 +168,8 @@ private fun UpdateCard(release: AppRelease, progress: Float?, update: UpdateView
                 Text("Downloading…", style = MaterialTheme.typography.bodySmall)
             } else {
                 Text(
-                    "Android asks you to confirm the install. Your servers and saved passwords are kept.",
+                    "Android asks you to confirm the first update; later ones install on their own. " +
+                        "The app restarts, and your servers and saved passwords are kept.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
