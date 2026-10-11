@@ -17,7 +17,7 @@ Run from `android/` (needs JDK 17 and Android SDK platform 35; `./gradlew` boots
 ./gradlew testDebugUnitTest --tests 'com.lilayam.dellservertools.core.proxmox.LxcRequestTest'   # single test class
 ```
 
-There is no lint task configured. Releases are built by pushing a `v*` tag (`.github/workflows/release.yml`; signing comes from `RELEASE_*` env vars/secrets, never a committed keystore).
+There is no lint task configured. Every push to `main` (and every `v*` tag) is published as a signed GitHub release by `.github/workflows/release.yml`, which the in-app updater (`core/update/AppUpdate`, `ui/UpdateViewModel`) installs from; signing comes from `RELEASE_*` env vars/secrets, never a committed keystore.
 
 ## Architecture
 

@@ -1,12 +1,21 @@
 name: Release
 
-# Push a tag like v1.0.0 to build the APK and attach it to a GitHub release.
+# Every merge to main is published as a release named build-<N>; the app finds it through
+# GitHub's "latest release" and offers to update itself. A tag like v1.2.0 publishes the same
+# way under that name. Publishing needs the signing key secrets (see README): Android installs
+# an update only when it is signed with the same key as the installed app.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
 
 permissions:
   contents: write
+
+# Publish in order, so the newest build is the latest release.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -15,16 +24,37 @@ jobs:
     defaults:
       run:
         working-directory: android
+    env:
+      GH_REPO: ${{ github.repository }}
 
     steps:
+      - name: Check for the signing key
+        id: key
+        working-directory: .
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          # The run number only grows, so every published build has a higher version code
+          # (the last hand-set one was 2).
+          echo "APP_VERSION_CODE=$((GITHUB_RUN_NUMBER + 100))" >> "$GITHUB_ENV"
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; nothing is published (see README, Releases)."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
 
       - uses: actions/setup-java@v4
+        if: steps.key.outputs.present == 'true'
         with:
           distribution: temurin
           java-version: "17"
 
       - uses: android-actions/setup-android@v3
+        if: steps.key.outputs.present == 'true'
         with:
           # The action's default package set includes the obsolete "tools"
           # package, which Google removed from the SDK repository; requesting
@@ -33,29 +63,52 @@ jobs:
           packages: platform-tools
 
       - name: Unit tests
+        if: steps.key.outputs.present == 'true'
         run: ./gradlew --no-daemon testDebugUnitTest
 
-      # Optional signing key (see README). Without it the APK is signed with a
-      # throwaway debug key, so each release has to be installed fresh.
-      - name: Decode signing key
+      - name: Build signed release APK
+        if: steps.key.outputs.present == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-          fi
-
-      - name: Build release APK
-        env:
           RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          export RELEASE_STORE_FILE="$RUNNER_TEMP/release.jks"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            export APP_VERSION_NAME="${GITHUB_REF_NAME#v}"
+          else
+            export APP_VERSION_NAME="build-$APP_VERSION_CODE"
+          fi
           ./gradlew --no-daemon assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk "../DellServerTools-${GITHUB_REF_NAME}.apk"
+          rm -f "$RUNNER_TEMP/release.jks"
+          # The app reads the version code from this name (core/update/AppUpdate.kt).
+          cp app/build/outputs/apk/release/app-release.apk "../DellServerTools-$APP_VERSION_CODE.apk"
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: DellServerTools-${{ github.ref_name }}.apk
-          generate_release_notes: true
+      - name: Publish release
+        if: steps.key.outputs.present == 'true'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apk="DellServerTools-$APP_VERSION_CODE.apk"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            gh release create "$GITHUB_REF_NAME" "$apk" --verify-tag --latest --generate-notes
+          else
+            gh release create "build-$APP_VERSION_CODE" "$apk" --target "$GITHUB_SHA" --latest \
+              --title "Build $APP_VERSION_CODE" --notes "Built from $GITHUB_SHA on main."
+          fi
+
+      # Keep the ten newest main builds; tagged releases stay.
+      - name: Prune old builds
+        if: steps.key.outputs.present == 'true' && github.ref_type == 'branch'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 200 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+          while read -r tag; do
+            gh release delete "$tag" --yes --cleanup-tag
+          done
