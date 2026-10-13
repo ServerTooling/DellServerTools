@@ -147,4 +147,71 @@ class ProxmoxJsonTest {
             PinnedTls.fingerprint("abc".toByteArray()),
         )
     }
+
+    @Test
+    fun `parses storage status and keeps only the extra config keys`() {
+        val status = ProxmoxJson.storageStatus(
+            JSONObject("""{"type":"nfs","content":"backup, iso","shared":1,"enabled":1,"active":0,"used":5,"avail":6,"total":11}"""),
+        )
+        assertEquals(listOf("backup", "iso"), status.content)
+        assertTrue(status.shared)
+        assertFalse(status.active)
+
+        val config = ProxmoxJson.storageConfig(
+            JSONObject("""{"storage":"nas","type":"nfs","content":"backup","shared":1,"digest":"x","server":"192.0.2.10","export":"/backup"}"""),
+        )
+        assertEquals(listOf("export" to "/backup", "server" to "192.0.2.10"), config)
+    }
+
+    @Test
+    fun `parses storage content grouped by type, newest first`() {
+        val volumes = ProxmoxJson.storageContent(
+            JSONArray(
+                """
+                [
+                  {"volid":"nas:backup/vzdump-lxc-200-2026_01_01.tar.zst","content":"backup","size":10,"vmid":"200","ctime":100},
+                  {"volid":"nas:backup/vzdump-qemu-100-2026_01_02.vma.zst","content":"backup","size":20,"vmid":100,"ctime":200,
+                   "notes":" weekly ","protected":1},
+                  {"volid":"nas:iso/debian.iso","content":"iso","format":"iso","size":30}
+                ]
+                """,
+            ),
+        )
+        assertEquals(listOf(100, 200, null), volumes.map { it.vmid })
+        assertEquals("vzdump-qemu-100-2026_01_02.vma.zst", volumes[0].name)
+        assertEquals("weekly", volumes[0].notes)
+        assertTrue(volumes[0].protected)
+        assertEquals("debian.iso", volumes[2].name)
+    }
+
+    @Test
+    fun `flattens the ZFS vdev tree depth first`() {
+        val pool = ProxmoxJson.zfsPool(
+            JSONObject(
+                """
+                {"name":"tank","state":"DEGRADED","status":"One or more devices has been removed.","errors":"No known data errors",
+                 "children":[{"name":"tank","state":"DEGRADED","read":0,"write":0,"cksum":0,"children":[
+                   {"name":"raidz1-0","state":"DEGRADED","read":0,"write":0,"cksum":0,"children":[
+                     {"name":"sdc","state":"ONLINE","read":0,"write":0,"cksum":0},
+                     {"name":"sdd","state":"REMOVED","read":"0","write":"0","cksum":"0","msg":"was /dev/sdd1"}]}]}]}
+                """,
+            ),
+        )
+        assertEquals("DEGRADED", pool.state)
+        assertEquals(listOf("tank" to 0, "raidz1-0" to 1, "sdc" to 2, "sdd" to 2), pool.devices.map { it.name to it.depth })
+        assertEquals("was /dev/sdd1", pool.devices.last().msg)
+    }
+
+    @Test
+    fun `parses physical disks`() {
+        val disks = ProxmoxJson.disks(
+            JSONArray(
+                """[{"devpath":"/dev/sdb","model":"HDD","type":"hdd","size":2,"health":"PASSED","wearout":"N/A","used":"LVM"},
+                    {"devpath":"/dev/sda","model":"SSD","type":"ssd","size":1,"health":"FAILED","wearout":12}]""",
+            ),
+        )
+        assertEquals(listOf("/dev/sda", "/dev/sdb"), disks.map { it.devPath })
+        assertEquals("12", disks[0].wearout)
+        assertEquals("", disks[0].used)
+    }
 }

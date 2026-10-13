@@ -12,14 +12,18 @@ import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.GuestStatus
 import com.lilayam.dellservertools.core.proxmox.GuestType
 import com.lilayam.dellservertools.core.proxmox.NodeStatus
+import com.lilayam.dellservertools.core.proxmox.PhysicalDisk
 import com.lilayam.dellservertools.core.proxmox.ProxmoxApiException
 import com.lilayam.dellservertools.core.proxmox.ProxmoxClient
 import com.lilayam.dellservertools.core.proxmox.ProxmoxCredentials
 import com.lilayam.dellservertools.core.proxmox.RunnersClient
 import com.lilayam.dellservertools.core.proxmox.Snapshot
 import com.lilayam.dellservertools.core.proxmox.StorageInfo
+import com.lilayam.dellservertools.core.proxmox.StorageStatus
+import com.lilayam.dellservertools.core.proxmox.StorageVolume
 import com.lilayam.dellservertools.core.proxmox.TaskSummary
 import com.lilayam.dellservertools.core.proxmox.UntrustedCertificateException
+import com.lilayam.dellservertools.core.proxmox.ZfsPool
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
@@ -49,6 +53,16 @@ data class NodeDetail(
     val node: String,
     val status: NodeStatus? = null,
     val storage: List<StorageInfo> = emptyList(),
+    val disks: List<PhysicalDisk> = emptyList(),
+)
+
+data class StorageDetail(
+    val node: String,
+    val storage: String,
+    val status: StorageStatus? = null,
+    val config: List<Pair<String, String>> = emptyList(),
+    val volumes: List<StorageVolume> = emptyList(),
+    val zfs: ZfsPool? = null,
 )
 
 data class ProxmoxUiState(
@@ -62,6 +76,7 @@ data class ProxmoxUiState(
     val resources: List<ClusterResource> = emptyList(),
     val guest: GuestDetail? = null,
     val node: NodeDetail? = null,
+    val storage: StorageDetail? = null,
     val tasks: List<TaskSummary> = emptyList(),
     val taskLog: List<String> = emptyList(),
     val taskLogRunning: Boolean = false,
@@ -183,7 +198,25 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         load { c ->
             val status = c.nodeStatus(node)
             val storage = runCatching { c.storage(node) }.getOrDefault(emptyList())
-            _state.update { it.copy(node = NodeDetail(node, status, storage)) }
+            // Needs Sys.Audit; a token without it still sees the rest of the node.
+            val disks = runCatching { c.disks(node) }.getOrDefault(emptyList())
+            _state.update { it.copy(node = NodeDetail(node, status, storage, disks)) }
+        }
+    }
+
+    fun loadStorage(node: String, storage: String) {
+        val current = _state.value.storage
+        if (current?.node != node || current.storage != storage) {
+            _state.update { it.copy(storage = StorageDetail(node, storage)) }
+        }
+        load { c ->
+            val status = c.storageStatus(node, storage)
+            // The storage.cfg entry needs Datastore.Allocate, the pool status Sys.Audit: optional extras.
+            val config = runCatching { c.storageConfig(storage) }.getOrDefault(emptyList())
+            val volumes = if (status.active) runCatching { c.storageContent(node, storage) }.getOrDefault(emptyList()) else emptyList()
+            val pool = config.firstOrNull { it.first == "pool" }?.second?.substringBefore('/')
+            val zfs = if (status.type == "zfspool" && pool != null) runCatching { c.zfsPool(node, pool) }.getOrNull() else null
+            _state.update { it.copy(storage = StorageDetail(node, storage, status, config, volumes, zfs)) }
         }
     }
 
