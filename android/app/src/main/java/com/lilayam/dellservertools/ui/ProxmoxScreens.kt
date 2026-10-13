@@ -70,6 +70,7 @@ import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.Format
 import com.lilayam.dellservertools.core.proxmox.GuestShell
 import com.lilayam.dellservertools.core.proxmox.GuestType
+import com.lilayam.dellservertools.core.proxmox.PhysicalDisk
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
@@ -206,7 +207,11 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
             }
             if (storage.isNotEmpty()) {
                 section("Storage")
-                items(storage, key = { it.id }) { s -> StorageRow(s.name, s.node, s.disk, s.maxDisk, s.status) }
+                items(storage, key = { it.id }) { s ->
+                    StorageRow(s.name, s.node, s.disk, s.maxDisk, s.status) {
+                        vms.servers.navigate(Screen.Storage(profile.id, s.node, s.storage ?: s.name))
+                    }
+                }
             }
             // Last, so the guests stay on the first screen.
             if (state.connected) {
@@ -323,8 +328,8 @@ private fun UsageLine(label: String, fraction: Double, text: String) {
 }
 
 @Composable
-private fun StorageRow(name: String, node: String, used: Long, total: Long, status: String) {
-    Card(Modifier.fillMaxWidth()) {
+private fun StorageRow(name: String, node: String, used: Long, total: Long, status: String, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("storage-$name")) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StatusDot(statusColor(status))
@@ -334,6 +339,159 @@ private fun StorageRow(name: String, node: String, used: Long, total: Long, stat
             }
             if (total > 0) {
                 UsageLine("Used", used.toDouble() / total, "${Format.bytes(used)} / ${Format.bytes(total)}")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiskRow(disk: PhysicalDisk) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(diskHealthColor(disk.health))
+                Spacer(Modifier.width(10.dp))
+                Text(disk.devPath, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(Format.bytes(disk.size), style = MaterialTheme.typography.labelSmall)
+            }
+            KeyValue("Model", disk.model)
+            KeyValue("Type", disk.type)
+            KeyValue("SMART", disk.health)
+            KeyValue("Life left", disk.wearout.takeIf { it.toIntOrNull() != null }?.let { "$it%" }.orEmpty())
+            KeyValue("Used by", disk.used)
+        }
+    }
+}
+
+private fun diskHealthColor(health: String): Color = when (health.uppercase()) {
+    "PASSED", "OK" -> Green
+    "", "UNKNOWN" -> Grey
+    else -> Red
+}
+
+private fun contentLabel(content: String): String = when (content) {
+    "images" -> "VM disks"
+    "rootdir" -> "Container volumes"
+    "iso" -> "ISO images"
+    "vztmpl" -> "Container templates"
+    "backup" -> "Backups"
+    "snippets" -> "Snippets"
+    "import" -> "Import"
+    else -> content
+}
+
+// ---------------------------------------------------------------- storage
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StorageScreen(screen: Screen.Storage, vms: AppViewModels) {
+    val vm = vms.proxmox
+    val state by vm.state.collectAsStateWithLifecycle()
+    LaunchedEffect(screen, state.connected) { vm.loadStorage(screen.node, screen.storage) }
+    AutoRefresh(state.connected, 15_000) { vm.loadStorage(screen.node, screen.storage) }
+    ForwardMessages(state.message, vms) { vm.clearMessage() }
+
+    val detail = state.storage?.takeIf { it.node == screen.node && it.storage == screen.storage }
+    val status = detail?.status
+
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("Storage ${screen.storage}") },
+            navigationIcon = { IconButton(onClick = { vms.servers.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+        )
+        LazyColumn(
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            if (detail == null || status == null) {
+                item { Text(state.error ?: "Loading…") }
+                return@LazyColumn
+            }
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (status.total > 0) {
+                            UsageLine(
+                                "Used",
+                                status.used.toDouble() / status.total,
+                                "${Format.bytes(status.used)} / ${Format.bytes(status.total)}",
+                            )
+                        }
+                        KeyValue("Free", if (status.total > 0) Format.bytes(status.avail) else "")
+                        KeyValue("Type", status.type)
+                        KeyValue("Node", screen.node)
+                        KeyValue("Content", status.content.joinToString(", ") { contentLabel(it) })
+                        KeyValue("State", if (!status.enabled) "disabled" else if (status.active) "active" else "inactive")
+                        KeyValue("Shared", if (status.shared) "yes" else "no")
+                    }
+                }
+            }
+            detail.zfs?.let { zfs ->
+                section("ZFS pool ${zfs.name}")
+                item {
+                    Card(Modifier.fillMaxWidth().testTag("zfs-pool")) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                StatusDot(if (zfs.state == "ONLINE") Green else Red)
+                                Spacer(Modifier.width(10.dp))
+                                Text(zfs.state, fontWeight = FontWeight.SemiBold)
+                            }
+                            KeyValue("Scan", zfs.scan)
+                            KeyValue("Errors", zfs.errors)
+                            KeyValue("Status", zfs.status)
+                            KeyValue("Action", zfs.action)
+                            HorizontalDivider()
+                            Text("Device · state · read/write/cksum errors", style = MaterialTheme.typography.labelSmall)
+                            zfs.devices.forEach { d ->
+                                Text(
+                                    "${"  ".repeat(d.depth)}${d.name}  ${d.state}  ${d.read}/${d.write}/${d.cksum}" +
+                                        if (d.msg.isNotEmpty()) "  ${d.msg}" else "",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    color = if (d.state.isEmpty() || d.state == "ONLINE") Color.Unspecified else Red,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            if (detail.config.isNotEmpty()) {
+                section("Configuration")
+                item {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            detail.config.forEach { (k, v) -> KeyValue(k, v) }
+                        }
+                    }
+                }
+            }
+            detail.volumes.groupBy { it.content }.forEach { (content, volumes) ->
+                section("${contentLabel(content)} (${volumes.size}, ${Format.bytes(volumes.sumOf { it.size })})")
+                items(volumes, key = { it.volid }) { v ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    v.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(Format.bytes(v.size), style = MaterialTheme.typography.labelSmall)
+                            }
+                            val meta = listOfNotNull(
+                                v.vmid?.let { "guest $it" },
+                                v.format.takeIf { it.isNotEmpty() },
+                                v.ctime?.let(::formatTime),
+                                "protected".takeIf { v.protected },
+                            )
+                            if (meta.isNotEmpty()) Text(meta.joinToString(" · "), style = MaterialTheme.typography.labelSmall)
+                            if (v.notes.isNotEmpty()) Text(v.notes, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        }
+                    }
+                }
             }
         }
     }
@@ -454,8 +612,12 @@ fun NodeScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
                         s.used,
                         s.total,
                         if (s.active) "available" else "unknown",
-                    )
+                    ) { vms.servers.navigate(Screen.Storage(profile.id, node, s.storage)) }
                 }
+            }
+            if (detail?.disks?.isNotEmpty() == true) {
+                section("Disks")
+                items(detail.disks, key = { it.devPath }) { DiskRow(it) }
             }
             val guests = state.resources.filter { it.guestType != null && it.node == node }.sortedBy { it.vmid }
             if (guests.isNotEmpty()) {

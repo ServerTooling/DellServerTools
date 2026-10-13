@@ -80,6 +80,20 @@ class ProxmoxClient(
 
     fun storage(node: String): List<StorageInfo> = ProxmoxJson.storage(get("/nodes/${enc(node)}/storage") as JSONArray)
 
+    fun storageStatus(node: String, storage: String): StorageStatus =
+        ProxmoxJson.storageStatus(get("/nodes/${enc(node)}/storage/${enc(storage)}/status") as JSONObject)
+
+    fun storageConfig(storage: String): List<Pair<String, String>> =
+        ProxmoxJson.storageConfig(get("/storage/${enc(storage)}") as JSONObject)
+
+    fun storageContent(node: String, storage: String): List<StorageVolume> =
+        ProxmoxJson.storageContent(get("/nodes/${enc(node)}/storage/${enc(storage)}/content") as JSONArray)
+
+    fun zfsPool(node: String, pool: String): ZfsPool =
+        ProxmoxJson.zfsPool(get("/nodes/${enc(node)}/disks/zfs/${enc(pool)}") as JSONObject)
+
+    fun disks(node: String): List<PhysicalDisk> = ProxmoxJson.disks(get("/nodes/${enc(node)}/disks/list") as JSONArray)
+
     fun guestStatus(node: String, type: GuestType, vmid: Int): GuestStatus =
         ProxmoxJson.guestStatus(get("${guestPath(node, type, vmid)}/status/current") as JSONObject)
 

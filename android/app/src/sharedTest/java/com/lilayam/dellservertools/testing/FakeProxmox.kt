@@ -129,6 +129,33 @@ class FakeProxmox : AutoCloseable {
                 json("""[{"volid":"local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst","size":130000000},{"volid":"local:vztmpl/alpine-3.20-default_20240908_amd64.tar.xz","size":3000000}]""")
             path.startsWith("/nodes/pve/storage/local/content") && path.contains("content=iso") ->
                 json("""[{"volid":"local:iso/debian-12.7.0-amd64-netinst.iso","size":660000000}]""")
+            path == "/nodes/pve/storage/local-zfs/status" -> json(
+                """{"type":"zfspool","content":"rootdir,images","shared":0,"enabled":1,"active":1,"used":104,"avail":103,"total":207}""",
+            )
+            path == "/nodes/pve/storage/local/status" -> json(
+                """{"type":"dir","content":"iso,backup,vztmpl","shared":0,"enabled":1,"active":1,"used":10,"avail":90,"total":100}""",
+            )
+            path == "/storage/local-zfs" -> json(
+                """{"storage":"local-zfs","type":"zfspool","pool":"rpool/data","sparse":1,"content":"images,rootdir","digest":"abc"}""",
+            )
+            path == "/storage/local" -> json("""{"storage":"local","type":"dir","path":"/var/lib/vz","content":"iso,backup,vztmpl","digest":"abc"}""")
+            path == "/nodes/pve/storage/local-zfs/content" -> json(
+                """[
+                  {"volid":"local-zfs:vm-100-disk-0","content":"images","format":"raw","size":34359738368,"vmid":100},
+                  {"volid":"local-zfs:subvol-200-disk-0","content":"rootdir","format":"subvol","size":17179869184,"vmid":200}
+                ]""",
+            )
+            path == "/nodes/pve/disks/zfs/rpool" -> json(
+                """{"name":"rpool","state":"ONLINE","errors":"No known data errors","scan":"scrub repaired 0B in 00:10:00",
+                   "children":[{"name":"rpool","state":"ONLINE","read":0,"write":0,"cksum":0,
+                     "children":[{"name":"mirror-0","state":"ONLINE","read":0,"write":0,"cksum":0,
+                       "children":[{"name":"sda3","state":"ONLINE","read":0,"write":0,"cksum":0,"leaf":1},
+                                   {"name":"sdb3","state":"ONLINE","read":0,"write":0,"cksum":2,"leaf":1}]}]}]}""",
+            )
+            path == "/nodes/pve/disks/list" -> json(
+                """[{"devpath":"/dev/sda","model":"TEST SSD","type":"ssd","size":256060514304,"health":"PASSED","wearout":97,"used":"ZFS"},
+                    {"devpath":"/dev/sdb","model":"TEST HDD","type":"hdd","size":2000398934016,"health":"PASSED","wearout":"N/A","used":"ZFS"}]""",
+            )
             path.startsWith("/nodes/pve/storage/") && path.contains("/content") -> json("[]")
             path == "/cluster/nextid" -> json("\"201\"")
             path.startsWith("/nodes/pve/network") -> json("""[{"iface":"vmbr0","type":"bridge"},{"iface":"vmbr1","type":"bridge"}]""")

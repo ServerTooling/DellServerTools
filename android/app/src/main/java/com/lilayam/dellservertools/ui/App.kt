@@ -93,6 +93,7 @@ fun DellServerToolsApp(vms: AppViewModels, onExit: () -> Unit) {
                     is Screen.IdracScreen -> WithProfile(vms, screen.profileId) { IdracScreenScreen(it, vms) }
                     is Screen.Proxmox -> WithProfile(vms, screen.profileId) { ProxmoxHomeScreen(it, vms) }
                     is Screen.Node -> WithProfile(vms, screen.profileId) { NodeScreen(it, screen.node, vms) }
+                    is Screen.Storage -> WithProfile(vms, screen.profileId) { StorageScreen(screen, vms) }
                     is Screen.CreateCt -> WithProfile(vms, screen.profileId) { CreateCtScreen(it, screen.node, vms) }
                     is Screen.CreateVm -> WithProfile(vms, screen.profileId) { CreateVmScreen(it, screen.node, vms) }
                     is Screen.EditGuest -> WithProfile(vms, screen.profileId) { EditGuestScreen(it, screen, vms) }

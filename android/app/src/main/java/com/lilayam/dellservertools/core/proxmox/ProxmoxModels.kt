@@ -108,6 +108,65 @@ data class StorageInfo(
     fun holds(contentType: String) = content.contains(contentType)
 }
 
+/** `GET /nodes/{node}/storage/{storage}/status`. */
+data class StorageStatus(
+    val type: String,
+    val content: List<String>,
+    val shared: Boolean,
+    val enabled: Boolean,
+    val active: Boolean,
+    val used: Long,
+    val avail: Long,
+    val total: Long,
+)
+
+/** One item of a storage's content: a disk image, backup, ISO, template, ... */
+data class StorageVolume(
+    val volid: String,
+    val content: String,
+    val format: String,
+    val size: Long,
+    val vmid: Int?,
+    val ctime: Long?,
+    val notes: String,
+    val protected: Boolean,
+) {
+    val name: String get() = volid.substringAfter(':').substringAfterLast('/')
+}
+
+/** A ZFS pool's health (`GET /nodes/{node}/disks/zfs/{name}`), with the vdev tree flattened. */
+data class ZfsPool(
+    val name: String,
+    val state: String,
+    val status: String,
+    val action: String,
+    val scan: String,
+    val errors: String,
+    val devices: List<ZfsDevice>,
+)
+
+/** One line of `zpool status`: [depth] 0 is the pool itself. */
+data class ZfsDevice(
+    val name: String,
+    val depth: Int,
+    val state: String,
+    val read: String,
+    val write: String,
+    val cksum: String,
+    val msg: String,
+)
+
+/** A physical disk of the node (`GET /nodes/{node}/disks/list`). */
+data class PhysicalDisk(
+    val devPath: String,
+    val model: String,
+    val type: String,
+    val size: Long,
+    val health: String,
+    val wearout: String,
+    val used: String,
+)
+
 /** A container template already present on a storage. */
 data class TemplateFile(val volid: String, val size: Long) {
     /** The file name without the `storage:vztmpl/` prefix, e.g. `debian-12-standard_...tar.zst`. */
@@ -240,6 +299,77 @@ object ProxmoxJson {
             active = o.optInt("active", 1) == 1,
         )
     }.sortedBy { it.storage }
+
+    fun storageStatus(o: JSONObject): StorageStatus = StorageStatus(
+        type = o.optString("type"),
+        content = o.optString("content").split(',').map { it.trim() }.filter { it.isNotEmpty() },
+        shared = o.optInt("shared", 0) == 1,
+        enabled = o.optInt("enabled", 1) == 1,
+        active = o.optInt("active", 1) == 1,
+        used = o.optLong("used"),
+        avail = o.optLong("avail"),
+        total = o.optLong("total"),
+    )
+
+    /** `GET /storage/{storage}`: the storage.cfg entry, minus what the status already shows. */
+    fun storageConfig(o: JSONObject): List<Pair<String, String>> =
+        o.keys().asSequence()
+            .filter { it !in setOf("digest", "storage", "type", "content", "shared") }
+            .map { it to o.opt(it)?.toString().orEmpty() }
+            .sortedBy { it.first }
+            .toList()
+
+    fun storageContent(data: JSONArray): List<StorageVolume> = data.objects().map { o ->
+        StorageVolume(
+            volid = o.optString("volid"),
+            content = o.optString("content"),
+            format = o.optString("format"),
+            size = o.optLong("size"),
+            vmid = o.optString("vmid").toIntOrNull(),
+            ctime = if (o.has("ctime")) o.optLong("ctime") else null,
+            notes = o.optString("notes").trim(),
+            protected = o.optInt("protected", 0) == 1,
+        )
+    }.sortedWith(compareBy<StorageVolume> { it.content }.thenByDescending { it.ctime ?: 0L }.thenBy { it.volid })
+
+    fun zfsPool(o: JSONObject): ZfsPool {
+        val devices = mutableListOf<ZfsDevice>()
+        fun walk(d: JSONObject, depth: Int) {
+            devices += ZfsDevice(
+                name = d.optString("name"),
+                depth = depth,
+                state = d.optString("state"),
+                read = d.optString("read"),
+                write = d.optString("write"),
+                cksum = d.optString("cksum"),
+                msg = d.optString("msg").trim(),
+            )
+            d.optJSONArray("children")?.objects()?.forEach { walk(it, depth + 1) }
+        }
+        o.optJSONArray("children")?.objects()?.forEach { walk(it, 0) }
+        return ZfsPool(
+            name = o.optString("name"),
+            state = o.optString("state"),
+            status = o.optString("status").trim(),
+            action = o.optString("action").trim(),
+            scan = o.optString("scan").trim(),
+            errors = o.optString("errors").trim(),
+            devices = devices,
+        )
+    }
+
+    fun disks(data: JSONArray): List<PhysicalDisk> = data.objects().map { o ->
+        PhysicalDisk(
+            devPath = o.optString("devpath"),
+            model = o.optString("model"),
+            type = o.optString("type"),
+            size = o.optLong("size"),
+            health = o.optString("health"),
+            // Percent of rated life left (100 = new), or "N/A" for disks that don't report it.
+            wearout = o.optString("wearout"),
+            used = o.optString("used"),
+        )
+    }.sortedBy { it.devPath }
 
     /** VM / CT configuration as ordered key-value pairs (digest and pending noise removed). */
     fun config(o: JSONObject): List<Pair<String, String>> =
