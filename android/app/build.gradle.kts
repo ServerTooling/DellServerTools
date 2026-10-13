@@ -79,8 +79,6 @@ android {
             // Robolectric UI tests leak state between tests in one JVM; give each test class its own.
             it.forkEvery = 1
             it.maxParallelForks = 2
-            // Robolectric only implements PixelCopy (Compose captureToImage, used for PR screenshots) in this mode.
-            it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
             it.testLogging {
                 events("failed")
                 exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

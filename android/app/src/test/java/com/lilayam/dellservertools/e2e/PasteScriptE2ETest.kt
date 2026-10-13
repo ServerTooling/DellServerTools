@@ -2,14 +2,9 @@ package com.lilayam.dellservertools.e2e
 
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.Bitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -17,7 +12,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.lilayam.dellservertools.core.proxmox.PinnedTls
-import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.KeyPairGenerator
@@ -39,7 +33,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowLooper
 
 /**
@@ -47,7 +40,6 @@ import org.robolectric.shadows.ShadowLooper
  * the host. JVM only: the SSH server library doesn't run on a device.
  */
 @RunWith(AndroidJUnit4::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PasteScriptE2ETest : ProxmoxE2ETestBase() {
     private lateinit var ssh: SshServer
 
@@ -102,7 +94,6 @@ class PasteScriptE2ETest : ProxmoxE2ETestBase() {
         // A phone paste may carry CRLF; tabs must survive.
         type("script-body", "#!/bin/bash\r\n\techo ready\r\n")
         type("script-args", "300")
-        screenshot("1-paste-script-dialog")
         compose.onNodeWithTag("script-run").performClick() // dialog buttons are not in a scrollable
 
         waitUntil { execs.isNotEmpty() }
@@ -110,12 +101,10 @@ class PasteScriptE2ETest : ProxmoxE2ETestBase() {
         assertEquals("cat > '/root/spoved-setup.sh' && chmod 700 '/root/spoved-setup.sh'", command)
         assertEquals("#!/bin/bash\n\techo ready\n", String(stdin))
         waitForTerminal("ran /root/spoved-setup.sh with 300")
-        screenshot("2-terminal-after-run")
 
         compose.onNodeWithTag("terminal-output").performTouchInput { longClick() }
         waitForText("Select text")
         compose.onNodeWithTag("select-text").assertTextContains("ran /root/spoved-setup.sh with 300", substring = true)
-        screenshot("3-select-text")
 
         compose.onNodeWithTag("select-copy-all").performClick()
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -130,16 +119,6 @@ class PasteScriptE2ETest : ProxmoxE2ETestBase() {
     private fun waitForTerminal(text: String) = waitUntil {
         ShadowLooper.idleMainLooper(100, TimeUnit.MILLISECONDS)
         compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
-    }
-
-    /** Saves a PNG for the pull request, when the graphics backend allows it; never fails the test. */
-    private fun screenshot(name: String) {
-        val dir = File("build/screenshots").apply { mkdirs() }
-        runCatching {
-            compose.waitForIdle()
-            val bitmap = compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap()
-            File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        }.onFailure { File(dir, "$name.skipped.txt").writeText(it.stackTraceToString()) }
     }
 
     /** A Proxmox host's bash, as far as this test needs: echo, a prompt, the run and list lines. */
