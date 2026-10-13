@@ -32,6 +32,9 @@ data class RunnersUiState(
     /** Why the last save was refused (the service's validation message). */
     val saveError: String? = null,
     val message: String? = null,
+    /** A link to open in the browser once, to add an org or account. */
+    val openUrl: String? = null,
+    val addingTarget: Boolean = false,
 ) {
     val anyRunning: Boolean get() = actions.any { it.last?.running == true }
     val dirty: Boolean get() = edits.isNotEmpty() || newPool.isNotBlank()
@@ -135,6 +138,33 @@ class RunnersViewModel : ViewModel() {
     }
 
     fun clearMessage() = _state.update { it.copy(message = null) }
+
+    /** Asks the service for a link that adds [name] through GitHub in the browser. */
+    fun addTarget(name: String, org: Boolean) {
+        val c = client ?: return
+        _state.update { it.copy(addingTarget = true) }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { c.addTargetLink(name, org) } }
+            if (c !== client) return@launch
+            _state.update { s ->
+                result.fold(
+                    onSuccess = { s.copy(addingTarget = false, openUrl = it, message = "Finish on GitHub, then refresh here.") },
+                    onFailure = { e ->
+                        val msg = when {
+                            e is RunnersApiException && e.httpStatus == 422 -> e.message
+                            // Services from before the browser page went away have no such call.
+                            e is RunnersApiException && e.httpStatus in setOf(404, 405) ->
+                                "This pve-runners is too old to add orgs from the app; update it from the Actions tab."
+                            else -> describe(e)
+                        }
+                        s.copy(addingTarget = false, message = "Couldn't add: $msg")
+                    },
+                )
+            }
+        }
+    }
+
+    fun urlOpened() = _state.update { it.copy(openUrl = null) }
 
     private fun describe(e: Throwable): String {
         val causes = generateSequence(e) { it.cause }.toList()
