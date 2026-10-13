@@ -70,5 +70,12 @@ class RunnersE2ETest : ProxmoxE2ETestBase() {
         // After the restart the screens show what the service now has.
         click("runners-tab-Overview")
         waitForText("1 / 8 runners")
+
+        // Adding an org asks the service for a link to open in the browser.
+        click("runners-tab-Settings")
+        compose.onNodeWithTag("runners-settings").performScrollToNode(hasTestTag("field-add-target"))
+        type("field-add-target", "example-two")
+        tap("add-org")
+        waitUntil { pve.runners.lastTarget == ("org" to "example-two") }
     }
 }
