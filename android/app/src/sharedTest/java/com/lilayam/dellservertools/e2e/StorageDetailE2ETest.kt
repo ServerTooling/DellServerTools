@@ -22,6 +22,7 @@ class StorageDetailE2ETest : ProxmoxE2ETestBase() {
         waitForText("Node pve")
         waitForText("Xeon")
         scrollListTo("/dev/sdb")
+        scrollListTo("local-zfs (zfspool)")
         compose.onNodeWithTag("storage-local-zfs (zfspool)").performClick()
         waitForText("Storage local-zfs")
         waitForText("ZFS pool rpool")
