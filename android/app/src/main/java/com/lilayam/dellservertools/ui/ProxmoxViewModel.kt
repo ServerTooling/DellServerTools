@@ -194,7 +194,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
 
     fun refreshResources() = load { c ->
         val resources = c.resources()
-        { it.copy(resources = resources, error = null) }
+        return@load { it.copy(resources = resources, error = null) }
     }
 
     fun loadNode(node: String) {
@@ -204,7 +204,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             val storage = runCatching { c.storage(node) }.getOrDefault(emptyList())
             // Needs Sys.Audit; a token without it still sees the rest of the node.
             val disks = runCatching { c.disks(node) }.getOrDefault(emptyList())
-            { it.copy(node = NodeDetail(node, status, storage, disks)) }
+            return@load { it.copy(node = NodeDetail(node, status, storage, disks)) }
         }
     }
 
@@ -220,7 +220,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             val volumes = if (status.active) runCatching { c.storageContent(node, storage) }.getOrDefault(emptyList()) else emptyList()
             val pool = config.firstOrNull { it.first == "pool" }?.second?.substringBefore('/')
             val zfs = if (status.type == "zfspool" && pool != null) runCatching { c.zfsPool(node, pool) }.getOrNull() else null
-            { it.copy(storage = StorageDetail(node, storage, status, config, volumes, zfs)) }
+            return@load { it.copy(storage = StorageDetail(node, storage, status, config, volumes, zfs)) }
         }
     }
 
@@ -241,7 +241,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             // Re-read on every refresh: a container that just started gets its DHCP lease seconds later.
             val canAsk = status.isRunning && (type == GuestType.LXC || GuestNetwork.agentEnabled(config))
             val addresses = if (canAsk) runCatching { c.guestAddresses(node, type, vmid) }.getOrDefault(emptyList()) else emptyList()
-            {
+            return@load {
                 if (it.guest?.vmid == vmid && it.guest.node == node) {
                     it.copy(guest = GuestDetail(node, type, vmid, status, config, snapshots, addresses))
                 } else {
@@ -253,13 +253,13 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadTasks() = load { c ->
         val tasks = c.clusterTasks()
-        { it.copy(tasks = tasks) }
+        return@load { it.copy(tasks = tasks) }
     }
 
     fun loadTaskLog(node: String, upid: String) = load { c ->
         val log = c.taskLog(node, upid)
         val running = c.taskStatus(node, upid).running
-        { it.copy(taskLog = log, taskLogRunning = running) }
+        return@load { it.copy(taskLog = log, taskLogRunning = running) }
     }
 
     fun clearTaskLog() = _state.update { it.copy(taskLog = emptyList(), taskLogRunning = false) }
