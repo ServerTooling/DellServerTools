@@ -194,7 +194,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
 
     fun refreshResources() = load { c ->
         val resources = c.resources()
-        _state.update { it.copy(resources = resources, error = null) }
+        return@load { it.copy(resources = resources, error = null) }
     }
 
     fun loadNode(node: String) {
@@ -204,7 +204,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             val storage = runCatching { c.storage(node) }.getOrDefault(emptyList())
             // Needs Sys.Audit; a token without it still sees the rest of the node.
             val disks = runCatching { c.disks(node) }.getOrDefault(emptyList())
-            _state.update { it.copy(node = NodeDetail(node, status, storage, disks)) }
+            return@load { it.copy(node = NodeDetail(node, status, storage, disks)) }
         }
     }
 
@@ -220,7 +220,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             val volumes = if (status.active) runCatching { c.storageContent(node, storage) }.getOrDefault(emptyList()) else emptyList()
             val pool = config.firstOrNull { it.first == "pool" }?.second?.substringBefore('/')
             val zfs = if (status.type == "zfspool" && pool != null) runCatching { c.zfsPool(node, pool) }.getOrNull() else null
-            _state.update { it.copy(storage = StorageDetail(node, storage, status, config, volumes, zfs)) }
+            return@load { it.copy(storage = StorageDetail(node, storage, status, config, volumes, zfs)) }
         }
     }
 
@@ -241,7 +241,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             // Re-read on every refresh: a container that just started gets its DHCP lease seconds later.
             val canAsk = status.isRunning && (type == GuestType.LXC || GuestNetwork.agentEnabled(config))
             val addresses = if (canAsk) runCatching { c.guestAddresses(node, type, vmid) }.getOrDefault(emptyList()) else emptyList()
-            _state.update {
+            return@load {
                 if (it.guest?.vmid == vmid && it.guest.node == node) {
                     it.copy(guest = GuestDetail(node, type, vmid, status, config, snapshots, addresses))
                 } else {
@@ -253,13 +253,13 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadTasks() = load { c ->
         val tasks = c.clusterTasks()
-        _state.update { it.copy(tasks = tasks) }
+        return@load { it.copy(tasks = tasks) }
     }
 
     fun loadTaskLog(node: String, upid: String) = load { c ->
         val log = c.taskLog(node, upid)
         val running = c.taskStatus(node, upid).running
-        _state.update { it.copy(taskLog = log, taskLogRunning = running) }
+        return@load { it.copy(taskLog = log, taskLogRunning = running) }
     }
 
     fun clearTaskLog() = _state.update { it.copy(taskLog = emptyList(), taskLogRunning = false) }
@@ -343,38 +343,23 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         }
 
     /** Applies config changes to an existing CT/VM, then reloads it. */
-    fun editGuest(
-        node: String,
-        type: GuestType,
-        vmid: Int,
-        edit: GuestEdit,
-        current: Map<String, String>,
-        onDone: () -> Unit,
-    ) {
-        val c = client ?: return
-        if (_state.value.busy != null) {
-            _state.update { it.copy(message = "Wait for \"${it.busy}\" to finish") }
-            return
-        }
-        val changes = edit.changedParams(current)
+    fun editGuest(node: String, type: GuestType, vmid: Int, edit: GuestEdit, onDone: () -> Unit) {
+        val changes = edit.changedParams()
         if (changes.isEmpty()) {
             _state.update { it.copy(message = "No changes to save") }
             onDone()
             return
         }
-        val label = "Update ${type.label} $vmid"
-        _state.update { it.copy(busy = label) }
-        viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { c.updateConfig(node, type, vmid, changes) } }
-            _state.update {
-                it.copy(busy = null, message = result.fold({ "$label: saved" }, { e -> "$label failed: ${describe(e)}" }))
-            }
-            if (result.isSuccess) {
-                loadGuest(node, type, vmid)
-                onDone()
-            }
+        runTask("Update ${type.label} $vmid", node, Triple(node, type, vmid), afterDone = onDone) { c ->
+            c.updateConfig(node, type, vmid, changes)
         }
     }
+
+    /** Grows one disk or mount point by [gb] GiB. */
+    fun resizeDisk(node: String, type: GuestType, vmid: Int, disk: String, gb: Int) =
+        runTask("Grow $disk of ${type.label} $vmid by $gb GiB", node, Triple(node, type, vmid)) { c ->
+            c.resizeDisk(node, type, vmid, disk, GuestEdit.growBy(gb))
+        }
 
     /** Downloads a template, then refreshes the template list in the open create form. */
     fun downloadTemplate(node: String, storage: String, template: String) {
@@ -448,13 +433,18 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private fun load(block: suspend (ProxmoxClient) -> Unit) {
+    /**
+     * Runs [block]'s server calls off the main thread and applies the state change it returns on the main thread:
+     * a StateFlow written from an IO worker can recompose on that worker, which the Compose tests caught as
+     * "LayoutNode should be attached to an owner".
+     */
+    private fun load(block: suspend (ProxmoxClient) -> (ProxmoxUiState) -> ProxmoxUiState) {
         val c = client ?: return
         if (!_state.value.connected) return
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { block(c) } }
             if (c !== client) return@launch
-            result.onFailure { e -> handleFailure(c, e) }
+            result.fold({ change -> _state.update(change) }, { e -> handleFailure(c, e) })
         }
     }
 
