@@ -184,14 +184,6 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
                     ResourceCard(node, onClick = { vms.servers.navigate(Screen.Node(profile.id, node.node)) })
                 }
             }
-            if (state.connected) {
-                item {
-                    OutlinedButton(
-                        onClick = { vms.servers.navigate(Screen.Runners(profile.id)) },
-                        modifier = Modifier.fillMaxWidth().testTag("open-runners"),
-                    ) { Text("GitHub runners (pve-runners)") }
-                }
-            }
             if (guests.isNotEmpty()) {
                 section("VMs & containers")
                 item {
@@ -215,6 +207,15 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
             if (storage.isNotEmpty()) {
                 section("Storage")
                 items(storage, key = { it.id }) { s -> StorageRow(s.name, s.node, s.disk, s.maxDisk, s.status) }
+            }
+            // Last, so the guests stay on the first screen.
+            if (state.connected) {
+                item {
+                    OutlinedButton(
+                        onClick = { vms.servers.navigate(Screen.Runners(profile.id)) },
+                        modifier = Modifier.fillMaxWidth().testTag("open-runners"),
+                    ) { Text("GitHub runners (pve-runners)") }
+                }
             }
         }
     }

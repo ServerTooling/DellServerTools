@@ -1,6 +1,7 @@
 package com.lilayam.dellservertools.e2e
 
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -22,14 +23,15 @@ class RunnersE2ETest : ProxmoxE2ETestBase() {
     @Test
     fun overviewActionsAndSettings() {
         addServerAndConnect()
-        waitForText("GitHub runners (pve-runners)")
+        waitForText("100 · web-01")
+        scrollListTo("GitHub runners (pve-runners)")
         tap("open-runners")
 
         // Overview: the status, its warnings and the configured org and pool.
         waitForText("1 / 4 runners")
         waitForText("gh-pve1-default-9000")
         compose.onNodeWithText("Warning: runner network has no isolation").assertExists()
-        compose.onNodeWithText("Org example-org").assertExists()
+        compose.onNodeWithTag("runners-overview").performScrollToNode(hasText("Org example-org"))
 
         // Actions: arguments are sent, a confirm is asked, and the output follows the run.
         tap("runners-tab-Actions")
