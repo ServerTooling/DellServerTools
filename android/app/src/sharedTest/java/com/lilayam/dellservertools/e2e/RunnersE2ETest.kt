@@ -15,6 +15,11 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RunnersE2ETest : ProxmoxE2ETestBase() {
 
+    /** For widgets outside the scrolling list (tabs, the save bar), which [tap] can't scroll to. */
+    private fun click(tag: String) {
+        compose.onNodeWithTag(tag).performClick()
+    }
+
     private fun openGroup(id: String) {
         compose.onNodeWithTag("runners-settings").performScrollToNode(hasTestTag("group-$id"))
         tap("group-$id")
@@ -34,7 +39,7 @@ class RunnersE2ETest : ProxmoxE2ETestBase() {
         compose.onNodeWithTag("runners-overview").performScrollToNode(hasText("Org example-org"))
 
         // Actions: arguments are sent, a confirm is asked, and the output follows the run.
-        tap("runners-tab-Actions")
+        click("runners-tab-Actions")
         type("arg-spawn-pool", "default")
         tap("run-spawn")
         waitForText("Start a runner now?")
@@ -45,16 +50,16 @@ class RunnersE2ETest : ProxmoxE2ETestBase() {
         waitForText("Done, ran 04:30:00–04:31:00")
 
         // Settings: a refused save shows the service's reason and leaves the edit in place.
-        tap("runners-tab-Settings")
+        click("runners-tab-Settings")
         openGroup("s-this-host")
         type("field-proxmox.max_runners", "lots", replace = true)
-        tap("runners-save")
+        click("runners-save")
         waitForText("proxmox.max_runners must be a whole number, got \"lots\"")
         assertEquals(0, pve.runners.saves.get())
 
         type("field-proxmox.max_runners", "8", replace = true)
         tap("field-autoscale.enabled")
-        tap("runners-save")
+        click("runners-save")
         waitUntil { pve.runners.saves.get() == 1 }
         val saved = pve.runners.lastSave!!
         assertEquals("8", saved["proxmox.max_runners"])
@@ -63,7 +68,7 @@ class RunnersE2ETest : ProxmoxE2ETestBase() {
         assertEquals("default", saved["target.0.pools"])
 
         // After the restart the screens show what the service now has.
-        tap("runners-tab-Overview")
+        click("runners-tab-Overview")
         waitForText("1 / 8 runners")
     }
 }
