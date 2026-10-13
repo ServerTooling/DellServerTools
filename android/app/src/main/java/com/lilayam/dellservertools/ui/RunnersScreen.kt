@@ -267,7 +267,6 @@ private fun SettingsTab(state: RunnersUiState, settings: RunnersSettings, vm: Ru
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.weight(1f).testTag("runners-settings"),
         ) {
-            state.saveError?.let { item { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("save-error")) } }
             heading("Orgs and accounts")
             item { Text("Adding an org needs GitHub in a browser: run `pve-runners setup` on the host.", style = MaterialTheme.typography.bodySmall) }
             items(settings.targets, key = { it.id }) { g -> GroupCard(g, state, vm, open) }
@@ -285,6 +284,10 @@ private fun SettingsTab(state: RunnersUiState, settings: RunnersSettings, vm: Ru
             items(settings.sections, key = { it.id }) { g -> GroupCard(g, state, vm, open) }
         }
         HorizontalDivider()
+        // Next to the button, so a refused save is seen wherever the list is scrolled.
+        state.saveError?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp).testTag("save-error"))
+        }
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 if (state.dirty) "Unsaved changes. Saving restarts the service." else "Saving restarts the service.",
