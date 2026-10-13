@@ -100,6 +100,13 @@ class ProxmoxClient(
     fun guestConfig(node: String, type: GuestType, vmid: Int): List<Pair<String, String>> =
         ProxmoxJson.config(get("${guestPath(node, type, vmid)}/config") as JSONObject)
 
+    /** The guest's current addresses: LXC asks the container, QEMU asks the guest agent (fails when it isn't running). */
+    fun guestAddresses(node: String, type: GuestType, vmid: Int): List<GuestAddress> = when (type) {
+        GuestType.LXC -> GuestNetwork.lxcInterfaces(get("${guestPath(node, type, vmid)}/interfaces") as JSONArray)
+        GuestType.QEMU ->
+            GuestNetwork.agentInterfaces(get("${guestPath(node, type, vmid)}/agent/network-get-interfaces") as JSONObject)
+    }
+
     /** start, stop, shutdown, reboot, suspend, resume, reset. Returns the task UPID. */
     fun guestAction(node: String, type: GuestType, vmid: Int, action: String): String? =
         post("${guestPath(node, type, vmid)}/status/$action", emptyMap()) as? String
