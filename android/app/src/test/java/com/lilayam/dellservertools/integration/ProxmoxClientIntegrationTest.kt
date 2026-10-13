@@ -1,5 +1,6 @@
 package com.lilayam.dellservertools.integration
 
+import com.lilayam.dellservertools.core.proxmox.GuestAddress
 import com.lilayam.dellservertools.core.proxmox.GuestType
 import com.lilayam.dellservertools.core.proxmox.PinnedTls
 import com.lilayam.dellservertools.core.proxmox.ProxmoxApiException
@@ -165,5 +166,20 @@ class ProxmoxClientIntegrationTest {
         )
         assertTrue(c.consoleUrl("pve", null, null, null).contains("console=shell"))
         assertEquals("https://127.0.0.1:${pve.port}/?mobile=1", c.webUrl(mobile = true))
+    }
+
+    @Test
+    fun `guest addresses come from the container and the guest agent`() {
+        val c = client()
+        c.login()
+        assertEquals(
+            listOf(GuestAddress("eth0", "192.0.2.50", 24), GuestAddress("eth0", "2001:db8::50", 64)),
+            c.guestAddresses("pve", GuestType.LXC, 200),
+        )
+        assertEquals(1, pve.requestsTo("/nodes/pve/lxc/200/interfaces", "GET").size)
+
+        // A VM without a running agent is an API error, which the screen treats as "no addresses".
+        assertThrows<ProxmoxApiException> { c.guestAddresses("pve", GuestType.QEMU, 100) }
+        assertEquals(1, pve.requestsTo("/nodes/pve/qemu/100/agent/network-get-interfaces", "GET").size)
     }
 }

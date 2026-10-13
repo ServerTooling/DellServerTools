@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.proxmox.CloneRequest
 import com.lilayam.dellservertools.core.proxmox.GuestEdit
+import com.lilayam.dellservertools.core.proxmox.GuestAddress
+import com.lilayam.dellservertools.core.proxmox.GuestNetwork
 import com.lilayam.dellservertools.core.proxmox.LxcRequest
 import com.lilayam.dellservertools.core.proxmox.VmRequest
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
@@ -47,6 +49,8 @@ data class GuestDetail(
     val status: GuestStatus? = null,
     val config: List<Pair<String, String>> = emptyList(),
     val snapshots: List<Snapshot> = emptyList(),
+    /** Addresses the running guest reports; empty when it is stopped or can't tell (no QEMU guest agent). */
+    val addresses: List<GuestAddress> = emptyList(),
 )
 
 data class NodeDetail(
@@ -234,9 +238,12 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             } else {
                 previous.snapshots
             }
+            // Re-read on every refresh: a container that just started gets its DHCP lease seconds later.
+            val canAsk = status.isRunning && (type == GuestType.LXC || GuestNetwork.agentEnabled(config))
+            val addresses = if (canAsk) runCatching { c.guestAddresses(node, type, vmid) }.getOrDefault(emptyList()) else emptyList()
             _state.update {
                 if (it.guest?.vmid == vmid && it.guest.node == node) {
-                    it.copy(guest = GuestDetail(node, type, vmid, status, config, snapshots))
+                    it.copy(guest = GuestDetail(node, type, vmid, status, config, snapshots, addresses))
                 } else {
                     it
                 }

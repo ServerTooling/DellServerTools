@@ -1,5 +1,8 @@
 package com.lilayam.dellservertools.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +59,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -68,6 +72,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.Format
+import com.lilayam.dellservertools.core.proxmox.GuestNetwork
 import com.lilayam.dellservertools.core.proxmox.GuestShell
 import com.lilayam.dellservertools.core.proxmox.GuestType
 import com.lilayam.dellservertools.core.proxmox.PhysicalDisk
@@ -650,6 +655,38 @@ private fun KeyValue(key: String, value: String) {
 
 // ---------------------------------------------------------------- guest
 
+/**
+ * The guest's IP addresses, tap to copy: what the running guest reports, else the static ones from its
+ * config. A DHCP guest only shows one while running (a VM also needs the QEMU guest agent).
+ */
+@Composable
+private fun GuestAddresses(detail: GuestDetail, vms: AppViewModels) {
+    val context = LocalContext.current
+    val live = detail.addresses
+    val shown = live.ifEmpty { GuestNetwork.staticAddresses(detail.config) }
+    shown.forEachIndexed { i, a ->
+        Row(
+            Modifier.fillMaxWidth().testTag("guest-ip").clickable {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("IP address", a.address))
+                vms.servers.showMessage("Copied ${a.address}")
+            },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (i == 0) "IP" else "", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(80.dp))
+            Text(a.address, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            Text(
+                "  ${a.iface}${if (live.isEmpty()) " · static" else ""}",
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+    val running = detail.status?.isRunning == true
+    if (shown.isEmpty() && running && detail.type == GuestType.QEMU && !GuestNetwork.agentEnabled(detail.config)) {
+        KeyValue("IP", "Turn on the QEMU guest agent (Options) to see it.")
+    }
+}
+
 private data class GuestAction(val action: String, val label: String, val confirm: String?)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -741,6 +778,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                                 KeyValue("Uptime", Format.duration(status.uptime))
                             }
                             if (status.maxDisk > 0) KeyValue("Disk", Format.bytes(status.maxDisk))
+                            detail?.let { GuestAddresses(it, vms) }
                         }
                     }
                 }

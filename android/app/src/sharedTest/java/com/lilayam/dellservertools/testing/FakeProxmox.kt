@@ -194,8 +194,19 @@ class FakeProxmox : AutoCloseable {
                 """{"status":"running","name":"gh-runner-1","cpus":4,"maxmem":2147483648,"mem":20971520,"uptime":120}""",
             )
             path == "/nodes/pve/lxc/200/config" -> json(
-                """{"hostname":"gh-runner-1","memory":2048,"cores":4,"swap":512,"rootfs":"local-zfs:subvol-200-disk-0,size=16G","features":"nesting=1","digest":"abc"}""",
+                """{"hostname":"gh-runner-1","memory":2048,"cores":4,"swap":512,"rootfs":"local-zfs:subvol-200-disk-0,size=16G","features":"nesting=1",
+                    "net0":"name=eth0,bridge=vmbr0,hwaddr=BC:24:11:00:00:01,ip=dhcp,type=veth","digest":"abc"}""",
             )
+            // PVE 8.1+ shape: inet/inet6 hold one address each, ip-addresses holds all of them.
+            path == "/nodes/pve/lxc/200/interfaces" -> json(
+                """[{"name":"lo","hwaddr":"00:00:00:00:00:00","inet":"127.0.0.1/8","inet6":"::1/128",
+                     "ip-addresses":[{"ip-address":"127.0.0.1","ip-address-type":"inet","prefix":8}]},
+                    {"name":"eth0","hwaddr":"bc:24:11:00:00:01","inet":"192.0.2.50/24","inet6":"fe80::be24:11ff:fe00:1/64",
+                     "ip-addresses":[{"ip-address":"192.0.2.50","ip-address-type":"inet","prefix":24},
+                                     {"ip-address":"2001:db8::50","ip-address-type":"inet6","prefix":64},
+                                     {"ip-address":"fe80::be24:11ff:fe00:1","ip-address-type":"inet6","prefix":64}]}]""",
+            )
+            path == "/nodes/pve/qemu/100/agent/network-get-interfaces" -> error(500, "QEMU guest agent is not running")
             path == "/nodes/pve/lxc/200/snapshot" && request.method == "GET" -> json("[]")
             path == "/nodes/pve/qemu/100/snapshot" && request.method == "GET" ->
                 json("""[{"name":"current","running":0},{"name":"clean","snaptime":1700000000,"description":"fresh install"}]""")
