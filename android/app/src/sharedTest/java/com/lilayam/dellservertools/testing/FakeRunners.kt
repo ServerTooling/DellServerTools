@@ -27,6 +27,10 @@ class FakeRunners(private val accepts: (String) -> Boolean) {
     @Volatile
     var lastActionArgs: Map<String, String>? = null
 
+    /** The last org or account asked to be added, as "org" or "user" to its name. */
+    @Volatile
+    var lastTarget: Pair<String, String>? = null
+
     private val values = linkedMapOf(
         "proxmox.max_runners" to "4",
         "autoscale.enabled" to "true",
@@ -64,6 +68,7 @@ class FakeRunners(private val accepts: (String) -> Boolean) {
             path == "/actions" -> json(JSONArray(listOf(action("images-pull"), action("spawn"))).toString())
             path.startsWith("/actions/") && request.method == "GET" -> json(action(path.removePrefix("/actions/")).toString())
             path.startsWith("/actions/") && request.method == "POST" -> start(path.removePrefix("/actions/"), request.body.clone().readUtf8())
+            path == "/targets" && request.method == "POST" -> addTarget(JSONObject(request.body.clone().readUtf8()))
             else -> error(404, "not found")
         }
     }
@@ -98,6 +103,15 @@ class FakeRunners(private val accepts: (String) -> Boolean) {
         .put("targets", JSONArray().put(group("target.0", "Org example-org", field("target.0.pools", "Pools", "text"),
             field("target.0.runner_group", "Runner group", "text"), field("target.0.remove", "Remove on save", "bool"))))
         .toString()
+
+    private fun addTarget(body: JSONObject): MockResponse {
+        val (kind, name) = body.optString("org").takeIf { it.isNotEmpty() }?.let { "org" to it } ?: ("user" to body.optString("user"))
+        if (!Regex("^[A-Za-z0-9][A-Za-z0-9-]{0,38}$").matches(name)) {
+            return error(422, "Enter a GitHub org name, or your username for personal repositories.")
+        }
+        lastTarget = kind to name
+        return json(JSONObject().put("url", LINK).toString(), 201)
+    }
 
     private fun save(body: JSONObject): MockResponse {
         val v = body.optJSONObject("values") ?: return error(400, "expected {\"values\": {...}}")
@@ -134,5 +148,9 @@ class FakeRunners(private val accepts: (String) -> Boolean) {
         running = name
         finishAction.set(false)
         return json(action(name).toString(), 202)
+    }
+
+    companion object {
+        const val LINK = "https://192.0.2.10:8765/app/new?k=0123abcd"
     }
 }

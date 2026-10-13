@@ -111,6 +111,15 @@ class RunnersClient(private val proxmox: ProxmoxClient, host: String, port: Int)
         }
     }
 
+    /**
+     * A one-time link that starts adding [name] (an org, or the user's own account when [org] is false) in
+     * the browser, where the GitHub App gets created on github.com. It works once, for a few minutes.
+     */
+    fun addTargetLink(name: String, org: Boolean): String {
+        val body = JSONObject().put(if (org) "org" else "user", name.trim())
+        return JSONObject(request("POST", "/targets", body)).getString("url")
+    }
+
     private fun request(method: String, path: String, body: JSONObject? = null): String = try {
         rawRequest(method, path, body)
     } catch (e: RunnersApiException) {
