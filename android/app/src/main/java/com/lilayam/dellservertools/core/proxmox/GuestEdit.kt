@@ -111,7 +111,7 @@ data class GuestEdit(
         val v = values.getValue(key)
         isDisk(key) && key in current && !key.startsWith("efidisk") && !key.startsWith("tpmstate") &&
             !v.contains("media=cdrom") && v != "none" && !v.startsWith("/") && diskSize(v) != null
-    }
+    }.sortedWith(KEY_ORDER)
 
     /** Every key in the config before or after the edit, `net2` before `net10`. */
     fun allKeys(): List<String> = (values.keys + current.keys).distinct().sortedWith(KEY_ORDER)
