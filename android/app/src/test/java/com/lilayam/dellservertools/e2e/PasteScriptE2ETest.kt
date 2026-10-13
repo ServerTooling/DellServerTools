@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -21,6 +22,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.security.KeyPairGenerator
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import org.apache.sshd.common.keyprovider.KeyPairProvider
 import org.apache.sshd.server.Environment
@@ -38,6 +40,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowLooper
 
 /**
  * "Paste script" and "Select text" in the Proxmox host shell, against an in-process SSH server that plays
@@ -92,7 +95,7 @@ class PasteScriptE2ETest : ProxmoxE2ETestBase() {
         waitForText("Trust and connect") // the host's SSH key, first use
         compose.onNodeWithText("Trust and connect").performClick()
         waitForText("Connected")
-        waitForText("root@pve:~#", substring = true)
+        waitForTerminal("root@pve:~#")
 
         tap("paste-script")
         type("script-path", "/root/spoved-setup.sh", replace = true)
@@ -106,7 +109,7 @@ class PasteScriptE2ETest : ProxmoxE2ETestBase() {
         val (command, stdin) = execs.single()
         assertEquals("cat > '/root/spoved-setup.sh' && chmod 700 '/root/spoved-setup.sh'", command)
         assertEquals("#!/bin/bash\n\techo ready\n", String(stdin))
-        waitForText("ran /root/spoved-setup.sh with 300", substring = true)
+        waitForTerminal("ran /root/spoved-setup.sh with 300")
         screenshot("2-terminal-after-run")
 
         compose.onNodeWithTag("terminal-output").performTouchInput { longClick() }
@@ -118,6 +121,15 @@ class PasteScriptE2ETest : ProxmoxE2ETestBase() {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val copied = clipboard.primaryClip!!.getItemAt(0).text.toString()
         assertTrue(copied, copied.contains("bash '/root/spoved-setup.sh' 300\nran /root/spoved-setup.sh with 300"))
+    }
+
+    /**
+     * The terminal redraws on a main-thread timer, and Robolectric's paused clock only moves when the test moves
+     * it, so output that arrives after the last redraw would never show up without this.
+     */
+    private fun waitForTerminal(text: String) = waitUntil {
+        ShadowLooper.idleMainLooper(100, TimeUnit.MILLISECONDS)
+        compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
     }
 
     /** Saves a PNG for the pull request, when the graphics backend allows it; never fails the test. */
