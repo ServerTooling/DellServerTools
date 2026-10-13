@@ -133,6 +133,18 @@ class ProxmoxClient(
         return post("/nodes/${enc(node)}/vzdump", params) as? String
     }
 
+    /** Backup archives on a storage, newest first. */
+    fun backups(node: String, storage: String): List<StorageVolume> =
+        ProxmoxJson.storageContent(get("/nodes/${enc(node)}/storage/${enc(storage)}/content?content=backup") as JSONArray)
+
+    /** The guest config saved in a backup, as `key: value` lines. */
+    fun backupConfig(node: String, volid: String): Map<String, String> =
+        RestoreRequest.parseConfig(get("/nodes/${enc(node)}/vzdump/extractconfig?volume=${enc(volid)}") as? String ?: "")
+
+    /** Restores a backup into a new or an existing guest. Returns the task UPID. */
+    fun restoreGuest(node: String, request: RestoreRequest): String? =
+        post("/nodes/${enc(node)}/${request.type.apiName}", request.toParams()) as? String
+
     // ---- container creation ----
 
     /** Next free VM/CT id in the cluster. */

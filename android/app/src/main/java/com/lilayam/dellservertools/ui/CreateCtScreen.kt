@@ -317,9 +317,9 @@ internal fun NumField(value: String, onChange: (String) -> Unit, label: String, 
 }
 
 @Composable
-internal fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun CheckRow(label: String, checked: Boolean, modifier: Modifier = Modifier, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = checked, onCheckedChange = onChange)
+        Checkbox(checked = checked, onCheckedChange = onChange, modifier = modifier)
         Text(label, style = MaterialTheme.typography.bodyMedium)
     }
 }
