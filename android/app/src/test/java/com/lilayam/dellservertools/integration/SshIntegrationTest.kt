@@ -7,6 +7,7 @@ import com.lilayam.dellservertools.core.IdracCommands
 import com.lilayam.dellservertools.core.SshShellSession
 import com.lilayam.dellservertools.core.TerminalEmulator
 import com.lilayam.dellservertools.core.UnknownHostKeyException
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.KeyPairGenerator
@@ -23,8 +24,10 @@ import org.apache.sshd.server.SshServer
 import org.apache.sshd.server.auth.password.PasswordAuthenticator
 import org.apache.sshd.server.channel.ChannelSession
 import org.apache.sshd.server.command.Command
+import org.apache.sshd.server.command.CommandFactory
 import org.apache.sshd.server.shell.ShellFactory
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -39,6 +42,9 @@ import org.junit.jupiter.api.assertThrows
  */
 class SshIntegrationTest {
     private val servers = mutableListOf<SshServer>()
+
+    /** Exec commands the server received, with what was sent on their stdin. */
+    private val execs = java.util.concurrent.CopyOnWriteArrayList<Pair<String, ByteArray>>()
 
     @AfterEach
     fun tearDown() = servers.forEach { it.stop(true) }
@@ -67,9 +73,36 @@ class SshIntegrationTest {
         server.passwordAuthenticator = PasswordAuthenticator { user, password, _ -> user == "root" && password == "calvin" }
         server.keyboardInteractiveAuthenticator = null
         server.shellFactory = ShellFactory { FakeIdracShell() }
+        server.commandFactory = CommandFactory { _, command -> RecordingExec(command) }
         server.start()
         servers += server
         return server.port
+    }
+
+    /** Reads stdin to the end, records it with the command, and fails when the command names `/readonly`. */
+    private inner class RecordingExec(private val command: String) : Command {
+        private lateinit var input: InputStream
+        private var exit: ExitCallback? = null
+
+        override fun setInputStream(input: InputStream) {
+            this.input = input
+        }
+
+        override fun setOutputStream(output: OutputStream) = Unit
+        override fun setErrorStream(err: OutputStream) = Unit
+
+        override fun setExitCallback(callback: ExitCallback) {
+            exit = callback
+        }
+
+        override fun start(channel: ChannelSession, env: Environment) {
+            thread(isDaemon = true) {
+                execs += command to input.readBytes()
+                exit?.onExit(if (command.contains("/readonly")) 1 else 0)
+            }
+        }
+
+        override fun destroy(channel: ChannelSession) = Unit
     }
 
     /** Talks like the iDRAC6 SM-CLP shell, including `console com2`. */
@@ -241,6 +274,35 @@ class SshIntegrationTest {
         val session = SshShellSession(settings(port), keys, approvedFingerprint = fingerprint)
         val input = session.connect(80, 25)
         readUntil(input, TerminalEmulator(80, 25), "/admin1->")
+        session.disconnect()
+    }
+
+    @Test
+    fun `upload sends the exact bytes on a separate exec channel and keeps the shell open`() {
+        val port = startServer(legacyOnly = false)
+        val keys = MemoryHostKeys()
+        val fingerprint = assertThrows<UnknownHostKeyException> {
+            SshShellSession(settings(port), keys).connect(80, 25)
+        }.fingerprint
+        val session = SshShellSession(settings(port), keys, approvedFingerprint = fingerprint)
+        val input = session.connect(80, 25)
+        val term = TerminalEmulator(80, 25)
+        readUntil(input, term, "/admin1->")
+
+        // Tabs, a heredoc and a 5,000-character line: all things the tty would mangle.
+        val script = "#!/bin/bash\n\tcat <<'EOF'\nx\nEOF\necho ${"a".repeat(5_000)}\n".toByteArray()
+        session.upload("/root/my setup.sh", script)
+
+        val (command, stdin) = execs.single()
+        assertEquals("cat > '/root/my setup.sh' && chmod 700 '/root/my setup.sh'", command)
+        assertArrayEquals(script, stdin)
+
+        // The interactive shell is untouched.
+        session.send("racadm serveraction powerstatus\r")
+        readUntil(input, term, "Server power status: ON")
+
+        val failed = assertThrows<IOException> { session.upload("/readonly/x.sh", "x\n".toByteArray()) }
+        assertTrue(failed.message!!.contains("exit status 1"), failed.message)
         session.disconnect()
     }
 }

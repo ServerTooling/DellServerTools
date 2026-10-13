@@ -1,5 +1,6 @@
 package com.lilayam.dellservertools.core
 
+import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.ChannelShell
 import com.jcraft.jsch.HostKey
 import com.jcraft.jsch.HostKeyRepository
@@ -8,6 +9,7 @@ import com.jcraft.jsch.JSchException
 import com.jcraft.jsch.Session
 import com.jcraft.jsch.UIKeyboardInteractive
 import com.jcraft.jsch.UserInfo
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
@@ -103,6 +105,27 @@ class SshShellSession(
         val out = output ?: throw IllegalStateException("Not connected")
         out.write(text.toByteArray(Charsets.UTF_8))
         out.flush()
+    }
+
+    /** Stores [content] as [path] on the host through a separate exec channel (see [ScriptUpload]). */
+    fun upload(path: String, content: ByteArray) {
+        val s = session ?: throw IllegalStateException("Not connected")
+        val ch = s.openChannel("exec") as ChannelExec
+        try {
+            ch.setCommand(ScriptUpload.saveCommand(path))
+            val stdin = ch.outputStream
+            ch.connect(CONNECT_TIMEOUT_MS)
+            stdin.write(content)
+            stdin.close()
+            val deadline = System.currentTimeMillis() + CONNECT_TIMEOUT_MS
+            while (!ch.isClosed) {
+                if (System.currentTimeMillis() > deadline) throw IOException("Timed out saving $path")
+                Thread.sleep(20)
+            }
+            if (ch.exitStatus != 0) throw IOException("Could not save $path (exit status ${ch.exitStatus})")
+        } finally {
+            ch.disconnect()
+        }
     }
 
     fun disconnect() {
