@@ -1,5 +1,6 @@
 package com.lilayam.dellservertools.integration
 
+import com.lilayam.dellservertools.core.proxmox.GuestEdit
 import com.lilayam.dellservertools.core.proxmox.GuestType
 import com.lilayam.dellservertools.core.proxmox.PinnedTls
 import com.lilayam.dellservertools.core.proxmox.ProxmoxClient
@@ -47,12 +48,38 @@ class VmAndEditIntegrationTest {
     }
 
     @Test
-    fun `edits a guest config via PUT`() {
-        client.updateConfig("pve", GuestType.QEMU, 100, mapOf("memory" to "8192", "cores" to "6"))
-        val put = pve.requestsTo("/qemu/100/config", "PUT").single()
-        assertEquals("PUT", put.method)
+    fun `edits a vm config via the async POST`() {
+        val upid = client.updateConfig("pve", GuestType.QEMU, 100, mapOf("memory" to "8192", "cores" to "6"))
+        assertTrue(upid!!.startsWith("UPID:pve:"))
+        pve.requestsTo("/qemu/100/config", "POST").single()
         assertEquals("8192", pve.lastConfigParams["memory"])
         assertEquals("6", pve.lastConfigParams["cores"])
+    }
+
+    @Test
+    fun `edits a container config via PUT, with added and removed keys`() {
+        val edit = GuestEdit(GuestType.LXC, client.guestConfig("pve", GuestType.LXC, 200).toMap())
+            .with("mp0", "local-zfs:8,mp=/data")
+            .with("net1", "name=eth1,bridge=vmbr1,ip=dhcp,type=veth")
+            .with("tags", "ci")
+            .without("swap")
+        client.updateConfig("pve", GuestType.LXC, 200, edit.changedParams())
+        pve.requestsTo("/lxc/200/config", "PUT").single()
+        assertEquals(
+            mapOf(
+                "mp0" to "local-zfs:8,mp=/data", "net1" to "name=eth1,bridge=vmbr1,ip=dhcp,type=veth",
+                "tags" to "ci", "delete" to "swap",
+            ),
+            pve.lastConfigParams,
+        )
+    }
+
+    @Test
+    fun `grows a container disk`() {
+        val upid = client.resizeDisk("pve", GuestType.LXC, 200, "rootfs", GuestEdit.growBy(8))
+        assertTrue(upid!!.startsWith("UPID:pve:"))
+        pve.requestsTo("/lxc/200/resize", "PUT").single()
+        assertEquals(mapOf("disk" to "rootfs", "size" to "+8G"), pve.lastResizeParams)
     }
 
     @Test

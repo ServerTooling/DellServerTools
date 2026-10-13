@@ -33,8 +33,10 @@ This app talks to the iDRAC over **SSH** instead:
 - **Create** containers (LXC) and VMs (QEMU) from a form: ID, name/hostname, template or ISO,
   storage, disk, CPU, memory, network (DHCP or static), unprivileged + nesting (for CI runners),
   password / SSH key, start on create.
-- **Edit** an existing container or VM: hostname/name, cores, memory, swap/sockets, start-on-boot,
-  nesting (CT) or guest agent (VM), description.
+- **Edit** any setting of a container, VM or template: typed fields for the common ones (name, CPU, memory,
+  tags, protection, boot order, CT features and DNS, guest agent), add/remove/edit disks, mount points and network
+  interfaces, grow a disk, and every other config key as raw text (read-only keys such as `unprivileged` are shown
+  with a note).
 - **Delete** a container or VM: a confirm dialog that needs the ID typed, with an optional purge
   (also remove it from backup jobs and replication).
 - **VMs and containers**: start, shut down, reboot, stop, pause/resume, reset; current status and

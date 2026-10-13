@@ -150,10 +150,19 @@ class ProxmoxClient(
     fun createQemu(node: String, params: Map<String, String>): String? =
         post("/nodes/${enc(node)}/qemu", params) as? String
 
-    /** Changes config of an existing container or VM (synchronous PUT). */
-    fun updateConfig(node: String, type: GuestType, vmid: Int, params: Map<String, String>) {
-        if (params.isNotEmpty()) request("PUT", "${guestPath(node, type, vmid)}/config", params)
+    /**
+     * Changes config of an existing container or VM. VMs use the async POST, which the API recommends for
+     * anything that allocates storage or hotplugs, and return its task UPID; containers only have a PUT.
+     */
+    fun updateConfig(node: String, type: GuestType, vmid: Int, params: Map<String, String>): String? {
+        if (params.isEmpty()) return null
+        val method = if (type == GuestType.QEMU) "POST" else "PUT"
+        return request(method, "${guestPath(node, type, vmid)}/config", params) as? String
     }
+
+    /** Grows a disk or mount point, e.g. `size=+8G`. Returns a task UPID when the server runs it as a task. */
+    fun resizeDisk(node: String, type: GuestType, vmid: Int, disk: String, size: String): String? =
+        request("PUT", "${guestPath(node, type, vmid)}/resize", mapOf("disk" to disk, "size" to size)) as? String
 
     /** Deletes a container or VM. Returns the task UPID. */
     fun deleteGuest(node: String, type: GuestType, vmid: Int, purge: Boolean, destroyUnreferenced: Boolean): String? {

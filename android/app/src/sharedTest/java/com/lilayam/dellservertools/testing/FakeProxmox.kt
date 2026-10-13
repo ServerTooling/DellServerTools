@@ -37,6 +37,9 @@ class FakeProxmox : AutoCloseable {
     var lastConfigParams: Map<String, String> = emptyMap()
 
     @Volatile
+    var lastResizeParams: Map<String, String> = emptyMap()
+
+    @Volatile
     var deleted: Pair<String, Int>? = null  // (type, vmid)
 
     @Volatile
@@ -177,9 +180,18 @@ class FakeProxmox : AutoCloseable {
                 lastCloneParams = form(request)
                 json("\"UPID:pve:00000014:${if (m.groupValues[1] == "qemu") "qmclone" else "vzclone"}:${m.groupValues[2]}:root@pam:\"")
             }
-            path.matches(Regex("/nodes/pve/(lxc|qemu)/\\d+/config")) && request.method == "PUT" -> {
+            // Containers only have the synchronous PUT; VMs are edited with the async POST, which starts a task.
+            path.matches(Regex("/nodes/pve/lxc/\\d+/config")) && request.method == "PUT" -> {
                 lastConfigParams = form(request)
                 json("null")
+            }
+            path.matches(Regex("/nodes/pve/qemu/\\d+/config")) && request.method == "POST" -> {
+                lastConfigParams = form(request)
+                json("\"UPID:pve:00000015:qmconfig:${path.split('/')[4]}:root@pam:\"")
+            }
+            path.matches(Regex("/nodes/pve/(lxc|qemu)/\\d+/resize")) && request.method == "PUT" -> {
+                lastResizeParams = form(request)
+                if (path.contains("/lxc/")) json("\"UPID:pve:00000016:resize:${path.split('/')[4]}:root@pam:\"") else json("null")
             }
             request.method == "DELETE" && Regex("/nodes/pve/(lxc|qemu)/\\d+").matches(path.substringBefore('?')) -> {
                 val m = Regex("/nodes/pve/(lxc|qemu)/(\\d+)").find(path.substringBefore('?'))!!

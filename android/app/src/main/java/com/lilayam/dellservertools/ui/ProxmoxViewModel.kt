@@ -343,38 +343,23 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         }
 
     /** Applies config changes to an existing CT/VM, then reloads it. */
-    fun editGuest(
-        node: String,
-        type: GuestType,
-        vmid: Int,
-        edit: GuestEdit,
-        current: Map<String, String>,
-        onDone: () -> Unit,
-    ) {
-        val c = client ?: return
-        if (_state.value.busy != null) {
-            _state.update { it.copy(message = "Wait for \"${it.busy}\" to finish") }
-            return
-        }
-        val changes = edit.changedParams(current)
+    fun editGuest(node: String, type: GuestType, vmid: Int, edit: GuestEdit, onDone: () -> Unit) {
+        val changes = edit.changedParams()
         if (changes.isEmpty()) {
             _state.update { it.copy(message = "No changes to save") }
             onDone()
             return
         }
-        val label = "Update ${type.label} $vmid"
-        _state.update { it.copy(busy = label) }
-        viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { c.updateConfig(node, type, vmid, changes) } }
-            _state.update {
-                it.copy(busy = null, message = result.fold({ "$label: saved" }, { e -> "$label failed: ${describe(e)}" }))
-            }
-            if (result.isSuccess) {
-                loadGuest(node, type, vmid)
-                onDone()
-            }
+        runTask("Update ${type.label} $vmid", node, Triple(node, type, vmid), afterDone = onDone) { c ->
+            c.updateConfig(node, type, vmid, changes)
         }
     }
+
+    /** Grows one disk or mount point by [gb] GiB. */
+    fun resizeDisk(node: String, type: GuestType, vmid: Int, disk: String, gb: Int) =
+        runTask("Grow $disk of ${type.label} $vmid by $gb GiB", node, Triple(node, type, vmid)) { c ->
+            c.resizeDisk(node, type, vmid, disk, GuestEdit.growBy(gb))
+        }
 
     /** Downloads a template, then refreshes the template list in the open create form. */
     fun downloadTemplate(node: String, storage: String, template: String) {
