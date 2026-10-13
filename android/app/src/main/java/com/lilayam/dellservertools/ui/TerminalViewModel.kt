@@ -254,7 +254,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         publish()
     }
 
-    fun copyableOutput(): String = terminal.snapshot().lines.joinToString("\n")
+    fun copyableOutput(): String = terminal.snapshot().text()
 
     fun clearMessage() = _state.update { it.copy(message = null) }
 
