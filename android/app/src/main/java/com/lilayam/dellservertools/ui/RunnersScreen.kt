@@ -54,6 +54,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
@@ -85,6 +86,12 @@ fun RunnersScreen(profile: ServerProfile, vms: AppViewModels) {
     // Follow running actions closely; otherwise keep the overview fresh.
     AutoRefresh(state.settings != null, if (state.anyRunning) 2_000 else 10_000) { vm.poll() }
     ForwardMessages(state.message, vms) { vm.clearMessage() }
+    val uriHandler = LocalUriHandler.current
+    LaunchedEffect(state.openUrl) {
+        val url = state.openUrl ?: return@LaunchedEffect
+        vm.urlOpened()
+        runCatching { uriHandler.openUri(url) }.onFailure { vms.servers.showMessage("No browser to open $url") }
+    }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -178,7 +185,7 @@ private fun OverviewTab(state: RunnersUiState, settings: RunnersSettings) {
             }
         }
         heading("Orgs and accounts")
-        if (settings.targets.isEmpty()) item { Text("None yet. Add one with `pve-runners setup` on the host.") }
+        if (settings.targets.isEmpty()) item { Text("None yet. Add one under Settings.") }
         items(settings.targets) { t ->
             SummaryRow(t.title, t.fields.firstOrNull { it.name.endsWith(".pools") }?.value.orEmpty())
         }
@@ -268,7 +275,7 @@ private fun SettingsTab(state: RunnersUiState, settings: RunnersSettings, vm: Ru
             modifier = Modifier.weight(1f).testTag("runners-settings"),
         ) {
             heading("Orgs and accounts")
-            item { Text("Adding an org needs GitHub in a browser: run `pve-runners setup` on the host.", style = MaterialTheme.typography.bodySmall) }
+            item { AddTarget(state.addingTarget, vm) }
             items(settings.targets, key = { it.id }) { g -> GroupCard(g, state, vm, open) }
             heading("Pools")
             items(settings.pools, key = { it.id }) { g -> GroupCard(g, state, vm, open) }
@@ -295,6 +302,29 @@ private fun SettingsTab(state: RunnersUiState, settings: RunnersSettings, vm: Ru
             )
             if (state.dirty) OutlinedButton(onClick = vm::discardEdits) { Text("Undo") }
             Button(onClick = vm::save, enabled = state.dirty && !state.saving, modifier = Modifier.testTag("runners-save")) { Text("Save") }
+        }
+    }
+}
+
+/** Adding an org or account opens GitHub in the browser, where its private App is created. */
+@Composable
+private fun AddTarget(busy: Boolean, vm: RunnersViewModel) {
+    var name by rememberSaveable { mutableStateOf("") }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        OutlinedTextField(
+            value = name, onValueChange = { name = it.trim() }, singleLine = true,
+            label = { Text("GitHub org, or your username") },
+            supportingText = {
+                Text("Opens GitHub in your browser to create a private App for it. The browser may warn about " +
+                    "this host's certificate (the Proxmox one); continue past it.")
+            },
+            modifier = Modifier.fillMaxWidth().testTag("field-add-target"),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { vm.addTarget(name, org = true) }, enabled = name.isNotEmpty() && !busy,
+                modifier = Modifier.testTag("add-org")) { Text("Add org") }
+            OutlinedButton(onClick = { vm.addTarget(name, org = false) }, enabled = name.isNotEmpty() && !busy,
+                modifier = Modifier.testTag("add-user")) { Text("Add my account") }
         }
     }
 }

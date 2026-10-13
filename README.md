@@ -46,7 +46,8 @@ This app talks to the iDRAC over **SSH** instead:
 - **Node**: status, storage, reboot / shut down.
 - **GitHub runners**: if the host runs [pve-runners](https://github.com/ServerTooling/Proxmox-github-runners),
   its status, settings and actions (clean up, start a runner, images, updates, caches) in native screens,
-  using the same login and certificate pin as the Proxmox API.
+  using the same login and certificate pin as the Proxmox API. Adding an org or account opens GitHub in
+  the browser, where its private App is created.
 - **SSH shell** to the Proxmox host, with shortcuts (`qm list`, `pct list`, `pvesm status`, `zpool status`, journal…).
 - **Full Proxmox web interface built in**, already logged in, for everything else (creating VMs,
   uploading ISOs, firewall, users, …). Toggle between the desktop and mobile layout.

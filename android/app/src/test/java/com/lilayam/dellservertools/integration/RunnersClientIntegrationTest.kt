@@ -6,6 +6,7 @@ import com.lilayam.dellservertools.core.proxmox.ProxmoxCredentials
 import com.lilayam.dellservertools.core.proxmox.RunnersApiException
 import com.lilayam.dellservertools.core.proxmox.RunnersClient
 import com.lilayam.dellservertools.testing.FakeProxmox
+import com.lilayam.dellservertools.testing.FakeRunners
 import java.net.URLDecoder
 import org.json.JSONObject
 import org.junit.jupiter.api.AfterEach
@@ -97,6 +98,20 @@ class RunnersClientIntegrationTest {
         assertEquals(422, e.httpStatus)
         assertEquals("proxmox.max_runners must be a whole number, got \"lots\"", e.message)
         assertEquals(1, pve.runners.saves.get())
+    }
+
+    @Test
+    fun `adding an org or account asks for a one-time browser link`() {
+        val r = runners(password)
+        assertEquals(FakeRunners.LINK, r.addTargetLink(" example-two ", org = true))
+        assertEquals("org" to "example-two", pve.runners.lastTarget)
+        assertEquals(JSONObject().put("org", "example-two").toString(),
+            pve.requestsTo("/api/v1/targets", "POST").single().body.readUtf8())
+        r.addTargetLink("someone", org = false)
+        assertEquals("user" to "someone", pve.runners.lastTarget)
+
+        val e = assertThrows<RunnersApiException> { r.addTargetLink("not a name", org = true) }
+        assertEquals(422, e.httpStatus)
     }
 
     @Test
