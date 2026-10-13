@@ -130,6 +130,16 @@ class FakeProxmox : AutoCloseable {
             )
             path.startsWith("/nodes/pve/storage/local/content") && path.contains("content=vztmpl") ->
                 json("""[{"volid":"local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst","size":130000000},{"volid":"local:vztmpl/alpine-3.20-default_20240908_amd64.tar.xz","size":3000000}]""")
+            path.startsWith("/nodes/pve/storage/local/content") && path.contains("content=backup") -> json(BACKUPS)
+            path == "/nodes/pve/storage/local/content" -> json(BACKUPS)
+            path.startsWith("/nodes/pve/vzdump/extractconfig") -> {
+                val volume = URLDecoder.decode(path.substringAfter("volume="), "UTF-8")
+                when {
+                    volume.contains("vzdump-qemu-100-") -> json("\"name: web-01\\nmemory: 2048\\n\\n[clean]\\nname: old\\n\"")
+                    volume.contains("vzdump-lxc-200-") -> json("\"arch: amd64\\nhostname: gh-runner-1\\nunprivileged: 1\\n\"")
+                    else -> error(500, "unable to read config")
+                }
+            }
             path.startsWith("/nodes/pve/storage/local/content") && path.contains("content=iso") ->
                 json("""[{"volid":"local:iso/debian-12.7.0-amd64-netinst.iso","size":660000000}]""")
             path == "/nodes/pve/storage/local-zfs/status" -> json(
@@ -240,6 +250,16 @@ class FakeProxmox : AutoCloseable {
             )
             else -> error(501, "Method '$path' not implemented in FakeProxmox")
         }
+    }
+
+    private companion object {
+        /** Newest first per guest; one VM and one container backup on `local`. */
+        const val BACKUPS = """[
+          {"volid":"local:backup/vzdump-qemu-100-2026_10_13-01_00_00.vma.zst","content":"backup","format":"vma.zst","size":1073741824,
+           "vmid":100,"ctime":1791853200,"notes":"web-01","subtype":"qemu"},
+          {"volid":"local:backup/vzdump-lxc-200-2026_10_12-01_00_00.tar.zst","content":"backup","format":"tar.zst","size":536870912,
+           "vmid":200,"ctime":1791766800,"notes":"gh-runner-1","subtype":"lxc"}
+        ]"""
     }
 
     /** pve-runners' JSON API, served on the same port (point the profile's runners port here). */

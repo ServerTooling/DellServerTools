@@ -9,6 +9,7 @@ import com.lilayam.dellservertools.core.proxmox.GuestEdit
 import com.lilayam.dellservertools.core.proxmox.GuestAddress
 import com.lilayam.dellservertools.core.proxmox.GuestNetwork
 import com.lilayam.dellservertools.core.proxmox.LxcRequest
+import com.lilayam.dellservertools.core.proxmox.RestoreRequest
 import com.lilayam.dellservertools.core.proxmox.VmRequest
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.GuestStatus
@@ -69,6 +70,14 @@ data class StorageDetail(
     val zfs: ZfsPool? = null,
 )
 
+/** Backup archives on every backup storage of a node, for the restore screen. */
+data class BackupList(
+    val node: String,
+    val loading: Boolean = true,
+    val volumes: List<StorageVolume> = emptyList(),
+    val error: String? = null,
+)
+
 data class ProxmoxUiState(
     val profileId: String? = null,
     val connected: Boolean = false,
@@ -88,6 +97,7 @@ data class ProxmoxUiState(
     val busy: String? = null,
     val message: String? = null,
     val createOptions: GuestCreateOptions? = null,
+    val backups: BackupList? = null,
 )
 
 /** What the create forms need: templates/ISOs, storages, bridges and the next free id. */
@@ -287,6 +297,31 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
     fun backup(node: String, type: GuestType, vmid: Int, storage: String?) =
         runTask("Backup ${type.label} $vmid", node, refreshGuest = Triple(node, type, vmid)) { c ->
             c.backup(node, vmid, storage)
+        }
+
+    // ------------------------------------------------------------ restore
+
+    fun loadBackups(node: String) {
+        if (_state.value.backups?.node != node) _state.update { it.copy(backups = BackupList(node)) }
+        load { c ->
+            val storages = c.storage(node).filter { it.active && it.holds("backup") }
+            // One unreadable storage (e.g. an offline PBS) shouldn't hide the backups on the others.
+            val results = storages.map { s -> runCatching { c.backups(node, s.storage) } }
+            val volumes = results.flatMap { it.getOrDefault(emptyList()) }.sortedByDescending { it.ctime ?: 0L }
+            val error = results.firstNotNullOfOrNull { it.exceptionOrNull() }?.let(::describe)
+            return@load { it.copy(backups = BackupList(node, loading = false, volumes = volumes, error = error)) }
+        }
+    }
+
+    /** The guest config saved in a backup; empty when it can't be read. */
+    suspend fun backupConfig(node: String, volid: String): Map<String, String> {
+        val c = client ?: return emptyMap()
+        return withContext(Dispatchers.IO) { runCatching { c.backupConfig(node, volid) }.getOrDefault(emptyMap()) }
+    }
+
+    fun restoreBackup(node: String, request: RestoreRequest, onRestored: () -> Unit) =
+        runTask("Restore ${request.type.label} ${request.vmid}", node, refreshGuest = null, afterDone = onRestored) { c ->
+            c.restoreGuest(node, request)
         }
 
     // ------------------------------------------------------------ create CT

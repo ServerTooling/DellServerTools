@@ -28,6 +28,8 @@ sealed interface Screen {
     data class CreateVm(val profileId: String, val node: String) : Screen
     data class EditGuest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
     data class CloneGuest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
+    /** Restore a backup; [vmid] lists only that guest's backups, [volid] preselects one. */
+    data class Restore(val profileId: String, val node: String, val vmid: Int? = null, val volid: String? = null) : Screen
     data class Guest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
     data class Tasks(val profileId: String) : Screen
     data class Runners(val profileId: String) : Screen

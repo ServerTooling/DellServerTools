@@ -98,6 +98,7 @@ fun DellServerToolsApp(vms: AppViewModels, onExit: () -> Unit) {
                     is Screen.CreateVm -> WithProfile(vms, screen.profileId) { CreateVmScreen(it, screen.node, vms) }
                     is Screen.EditGuest -> WithProfile(vms, screen.profileId) { EditGuestScreen(it, screen, vms) }
                     is Screen.CloneGuest -> WithProfile(vms, screen.profileId) { CloneGuestScreen(it, screen, vms) }
+                    is Screen.Restore -> WithProfile(vms, screen.profileId) { RestoreScreen(screen, vms) }
                     is Screen.Guest -> WithProfile(vms, screen.profileId) { GuestScreen(it, screen, vms) }
                     is Screen.Tasks -> WithProfile(vms, screen.profileId) { TasksScreen(it, vms) }
                     is Screen.Runners -> WithProfile(vms, screen.profileId) { RunnersScreen(it, vms) }

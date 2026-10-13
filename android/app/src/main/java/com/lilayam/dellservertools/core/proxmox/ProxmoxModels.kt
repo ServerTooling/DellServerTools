@@ -130,6 +130,8 @@ data class StorageVolume(
     val ctime: Long?,
     val notes: String,
     val protected: Boolean,
+    /** For backups: `qemu` or `lxc`. */
+    val subtype: String = "",
 ) {
     val name: String get() = volid.substringAfter(':').substringAfterLast('/')
 }
@@ -329,6 +331,7 @@ object ProxmoxJson {
             ctime = if (o.has("ctime")) o.optLong("ctime") else null,
             notes = o.optString("notes").trim(),
             protected = o.optInt("protected", 0) == 1,
+            subtype = o.optString("subtype"),
         )
     }.sortedWith(compareBy<StorageVolume> { it.content }.thenByDescending { it.ctime ?: 0L }.thenBy { it.volid })
 

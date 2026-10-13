@@ -42,7 +42,8 @@ This app talks to the iDRAC over **SSH** instead:
 - **VMs and containers**: start, shut down, reboot, stop, pause/resume, reset; current status and
   configuration.
 - **Snapshots**: take, roll back, delete.
-- **Backups**: start a snapshot-mode backup to any backup storage.
+- **Backups**: start a snapshot-mode backup to any backup storage, and restore one (from the guest, the node or the
+  storage screen) into a new ID or over the existing guest after typing its ID.
 - **Consoles**: noVNC (VMs) and xterm.js (containers, node shell) open inside the app.
 - **Tasks**: recent cluster tasks with live logs; action results are tracked until the task finishes.
 - **Node**: status, storage, reboot / shut down.

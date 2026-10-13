@@ -72,6 +72,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.Format
+import com.lilayam.dellservertools.core.proxmox.RestoreRequest
 import com.lilayam.dellservertools.core.proxmox.GuestNetwork
 import com.lilayam.dellservertools.core.proxmox.GuestShell
 import com.lilayam.dellservertools.core.proxmox.GuestType
@@ -474,7 +475,12 @@ fun StorageScreen(screen: Screen.Storage, vms: AppViewModels) {
             detail.volumes.groupBy { it.content }.forEach { (content, volumes) ->
                 section("${contentLabel(content)} (${volumes.size}, ${Format.bytes(volumes.sumOf { it.size })})")
                 items(volumes, key = { it.volid }) { v ->
-                    Card(Modifier.fillMaxWidth()) {
+                    // A backup opens the restore form with it already picked.
+                    val restorable = v.content == "backup" && RestoreRequest.typeOf(v) != null
+                    val open = Modifier.clickable {
+                        vms.servers.navigate(Screen.Restore(screen.profileId, screen.node, volid = v.volid))
+                    }
+                    Card(Modifier.fillMaxWidth().then(if (restorable) open.testTag("volume-${v.name}") else Modifier)) {
                         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -565,6 +571,10 @@ fun NodeScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
                             vms.servers.navigate(Screen.Web(profile.id, it, "$node shell", isMainUi = false))
                         }
                     }) { Text("Web shell") }
+                    FilledTonalButton(
+                        onClick = { vms.servers.navigate(Screen.Restore(profile.id, node)) },
+                        modifier = Modifier.testTag("node-restore"),
+                    ) { Text("Restore backup") }
                     OutlinedButton(onClick = { confirm = "reboot" to "Reboot node $node" }) { Text("Reboot") }
                     OutlinedButton(onClick = { confirm = "shutdown" to "Shut down node $node" }) {
                         Text("Shut down", color = MaterialTheme.colorScheme.error)
@@ -814,6 +824,10 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                         enabled = status?.isRunning == true,
                     ) { Text("Console") }
                     OutlinedButton(onClick = { backupDialog = true }, enabled = state.busy == null) { Text("Back up now") }
+                    OutlinedButton(
+                        onClick = { vms.servers.navigate(Screen.Restore(profile.id, screen.node, screen.vmid)) },
+                        modifier = Modifier.testTag("guest-restore"),
+                    ) { Text("Restore") }
                 }
             }
             if (profile.usesApiToken) {
