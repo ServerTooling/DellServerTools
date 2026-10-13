@@ -144,8 +144,9 @@ class FakeProxmox : AutoCloseable {
             }
             Regex("/nodes/pve/(lxc|qemu)/(\\d+)/clone").matches(path.substringBefore('?')) && request.method == "POST" -> {
                 val m = Regex("/nodes/pve/(lxc|qemu)/(\\d+)/clone").find(path.substringBefore('?'))!!
-                lastCloneParams = form(request)
+                // Tests wait on lastCloneParams, then read cloned: write it first.
                 cloned = m.groupValues[1] to m.groupValues[2].toInt()
+                lastCloneParams = form(request)
                 json("\"UPID:pve:00000014:${if (m.groupValues[1] == "qemu") "qmclone" else "vzclone"}:${m.groupValues[2]}:root@pam:\"")
             }
             path.matches(Regex("/nodes/pve/(lxc|qemu)/\\d+/config")) && request.method == "PUT" -> {
