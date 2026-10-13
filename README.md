@@ -44,6 +44,9 @@ This app talks to the iDRAC over **SSH** instead:
 - **Consoles**: noVNC (VMs) and xterm.js (containers, node shell) open inside the app.
 - **Tasks**: recent cluster tasks with live logs; action results are tracked until the task finishes.
 - **Node**: status, storage, reboot / shut down.
+- **GitHub runners**: if the host runs [pve-runners](https://github.com/ServerTooling/Proxmox-github-runners),
+  its status, settings and actions (clean up, start a runner, images, updates, caches) in native screens,
+  using the same login and certificate pin as the Proxmox API.
 - **SSH shell** to the Proxmox host, with shortcuts (`qm list`, `pct list`, `pvesm status`, `zpool status`, journal…).
 - **Full Proxmox web interface built in**, already logged in, for everything else (creating VMs,
   uploading ISOs, firewall, users, …). Toggle between the desktop and mobile layout.
@@ -108,6 +111,8 @@ screen preview opens it inside the app (full keyboard and mouse, including the B
 3. If your account uses two-factor login, create an API token (**Datacenter → Permissions → API Tokens**,
    untick *Privilege Separation* for full access) and enter its ID (`root@pam!phone`) and secret.
    With a token, consoles and the built-in web UI ask you to log in once in the page.
+4. For pve-runners, the server settings have its port (8765 unless its `web.listen` changed). The account or
+   token needs `Sys.Modify` on the node, as for the service's settings.
 
 ## Security
 

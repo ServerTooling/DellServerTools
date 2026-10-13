@@ -184,6 +184,14 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
                     ResourceCard(node, onClick = { vms.servers.navigate(Screen.Node(profile.id, node.node)) })
                 }
             }
+            if (state.connected) {
+                item {
+                    OutlinedButton(
+                        onClick = { vms.servers.navigate(Screen.Runners(profile.id)) },
+                        modifier = Modifier.fillMaxWidth().testTag("open-runners"),
+                    ) { Text("GitHub runners (pve-runners)") }
+                }
+            }
             if (guests.isNotEmpty()) {
                 section("VMs & containers")
                 item {
@@ -340,7 +348,7 @@ internal fun BusyBar(busy: String?) {
 }
 
 @Composable
-private fun AutoRefresh(enabled: Boolean, intervalMs: Long, refresh: () -> Unit) {
+internal fun AutoRefresh(enabled: Boolean, intervalMs: Long, refresh: () -> Unit) {
     LaunchedEffect(enabled) {
         while (enabled) {
             delay(intervalMs)

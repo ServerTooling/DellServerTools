@@ -12,6 +12,7 @@ import com.lilayam.dellservertools.ui.AppViewModels
 import com.lilayam.dellservertools.ui.DellServerToolsApp
 import com.lilayam.dellservertools.ui.IdracScreenViewModel
 import com.lilayam.dellservertools.ui.ProxmoxViewModel
+import com.lilayam.dellservertools.ui.RunnersViewModel
 import com.lilayam.dellservertools.ui.ServersViewModel
 import com.lilayam.dellservertools.ui.TerminalViewModel
 import com.lilayam.dellservertools.ui.UpdateViewModel
@@ -22,13 +23,14 @@ class MainActivity : ComponentActivity() {
     private val proxmox: ProxmoxViewModel by viewModels()
     private val idracScreen: IdracScreenViewModel by viewModels()
     private val update: UpdateViewModel by viewModels()
+    private val runners: RunnersViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
-            DellServerToolsApp(AppViewModels(servers, terminal, proxmox, idracScreen, update), onExit = ::finish)
+            DellServerToolsApp(AppViewModels(servers, terminal, proxmox, idracScreen, update, runners), onExit = ::finish)
         }
     }
 

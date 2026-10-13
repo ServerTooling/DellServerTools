@@ -27,6 +27,7 @@ class ServerProfileTest {
                 sshPort = 2222,
                 realm = "pve",
                 apiTokenId = "root@pam!phone",
+                runnersPort = 9443,
             ),
         )
         assertEquals(profiles, ServerProfile.listFromJson(ServerProfile.listToJson(profiles)))
@@ -43,6 +44,9 @@ class ServerProfileTest {
     fun `default ports depend on the server type`() {
         assertEquals(22, ServerProfile(type = ServerType.IDRAC6, name = "", host = "h", username = "u").port)
         assertEquals(8006, ServerProfile(type = ServerType.PROXMOX, name = "", host = "h", username = "u").port)
+        // pve-runners' default web.listen; profiles saved before it existed get it too.
+        assertEquals(8765, ServerProfile(type = ServerType.PROXMOX, name = "", host = "h", username = "u").runnersPort)
+        assertEquals(8765, ServerProfile.listFromJson("""[{"type":"PROXMOX","host":"h"}]""").single().runnersPort)
     }
 
     @Test

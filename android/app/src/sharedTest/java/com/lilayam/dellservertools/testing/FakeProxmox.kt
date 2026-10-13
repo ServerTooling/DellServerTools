@@ -90,6 +90,7 @@ class FakeProxmox : AutoCloseable {
     }
 
     private fun handle(request: RecordedRequest): MockResponse {
+        if (request.path.orEmpty().startsWith("/api/v1/")) return runners.handle(request)
         val path = request.path.orEmpty().removePrefix("/api2/json")
         if (path == "/access/ticket" && request.method == "POST") {
             val f = form(request)
@@ -188,6 +189,12 @@ class FakeProxmox : AutoCloseable {
             )
             else -> error(501, "Method '$path' not implemented in FakeProxmox")
         }
+    }
+
+    /** pve-runners' JSON API, served on the same port (point the profile's runners port here). */
+    val runners = FakeRunners { auth ->
+        auth == "PVEAPIToken=root@pam!ci=token-secret" ||
+            auth.startsWith("PVEAuthCookie=") && URLDecoder.decode(auth.removePrefix("PVEAuthCookie="), "UTF-8") == ticket
     }
 
     fun requestsTo(pathSuffix: String, method: String? = null): List<RecordedRequest> =
