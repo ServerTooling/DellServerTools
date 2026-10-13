@@ -49,6 +49,12 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
 
+      - name: Print screenshots (temporary, for PR review)
+        if: always()
+        run: |
+          cd android/app/build/screenshots 2>/dev/null || exit 0
+          for f in *; do echo "=== $f"; if [ "${f%.png}" != "$f" ]; then base64 -w0 "$f"; echo; else cat "$f"; fi; done
+
       # PNGs of new screens that JVM UI tests save, for reviewing UI changes in a pull request.
       - uses: actions/upload-artifact@v4
         if: always()
