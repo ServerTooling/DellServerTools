@@ -5,6 +5,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -33,8 +34,9 @@ class RestoreBackupE2ETest : ProxmoxE2ETestBase() {
         waitForText("Backup of \"web-01\".")
         tap("restore-overwrite")
         tap("restore-submit")
-        type("restore-confirm", "100")
-        tap("restore-go")
+        // The dialog doesn't scroll, so drive it directly like the delete dialog.
+        compose.onNodeWithTag("restore-confirm").performTextInput("100")
+        compose.onNodeWithTag("restore-go").performClick()
 
         waitUntil { pve.lastVmCreateParams.isNotEmpty() }
         assertEquals("100", pve.lastVmCreateParams["vmid"])
