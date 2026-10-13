@@ -100,7 +100,7 @@ class PasteScriptE2ETest : ProxmoxE2ETestBase() {
         type("script-body", "#!/bin/bash\r\n\techo ready\r\n")
         type("script-args", "300")
         screenshot("1-paste-script-dialog")
-        tap("script-run")
+        compose.onNodeWithTag("script-run").performClick() // dialog buttons are not in a scrollable
 
         waitUntil { execs.isNotEmpty() }
         val (command, stdin) = execs.single()
@@ -114,7 +114,7 @@ class PasteScriptE2ETest : ProxmoxE2ETestBase() {
         compose.onNodeWithTag("select-text").assertTextContains("ran /root/spoved-setup.sh with 300", substring = true)
         screenshot("3-select-text")
 
-        tap("select-copy-all")
+        compose.onNodeWithTag("select-copy-all").performClick()
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val copied = clipboard.primaryClip!!.getItemAt(0).text.toString()
         assertTrue(copied, copied.contains("bash '/root/spoved-setup.sh' 300\nran /root/spoved-setup.sh with 300"))
@@ -122,12 +122,12 @@ class PasteScriptE2ETest : ProxmoxE2ETestBase() {
 
     /** Saves a PNG for the pull request, when the graphics backend allows it; never fails the test. */
     private fun screenshot(name: String) {
+        val dir = File("build/screenshots").apply { mkdirs() }
         runCatching {
             compose.waitForIdle()
             val bitmap = compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap()
-            val dir = File("build/screenshots").apply { mkdirs() }
             File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        }.onFailure { println("screenshot $name skipped: $it") }
+        }.onFailure { File(dir, "$name.skipped.txt").writeText(it.stackTraceToString()) }
     }
 
     /** A Proxmox host's bash, as far as this test needs: echo, a prompt, the run and list lines. */
