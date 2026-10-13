@@ -3,6 +3,7 @@ package com.lilayam.dellservertools.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -24,11 +26,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
@@ -62,7 +67,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -71,10 +78,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lilayam.dellservertools.core.IdracCommands
 import com.lilayam.dellservertools.core.ProxmoxShellCommands
 import com.lilayam.dellservertools.core.QuickCommand
+import com.lilayam.dellservertools.core.ScriptUpload
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.ServerType
 import com.lilayam.dellservertools.core.SpecialKey
@@ -112,6 +122,8 @@ fun TerminalScreen(profile: ServerProfile, vms: AppViewModels, initialCommand: S
     var showBiosKeys by rememberSaveable { mutableStateOf(false) }
     var pendingCommand by remember { mutableStateOf<QuickCommand?>(null) }
     var showHelp by remember { mutableStateOf(false) }
+    var showPasteScript by remember { mutableStateOf(false) }
+    var showSelectText by remember { mutableStateOf(false) }
     val connected = state.status == ConnectionStatus.CONNECTED && state.profileId == profile.id
     val lines = if (state.profileId == profile.id) state.lines else emptyList()
 
@@ -217,6 +229,19 @@ fun TerminalScreen(profile: ServerProfile, vms: AppViewModels, initialCommand: S
                     )
                 }
             }
+            if (!isIdrac) {
+                item {
+                    AssistChip(
+                        onClick = { showPasteScript = true },
+                        label = { Text("Paste script") },
+                        leadingIcon = {
+                            Icon(Icons.Filled.ContentPaste, null, Modifier.size(AssistChipDefaults.IconSize))
+                        },
+                        enabled = connected,
+                        modifier = Modifier.testTag("paste-script"),
+                    )
+                }
+            }
             items(if (isIdrac) IdracCommands.quickCommands else ProxmoxShellCommands.quickCommands) { command ->
                 AssistChip(
                     onClick = {
@@ -240,7 +265,12 @@ fun TerminalScreen(profile: ServerProfile, vms: AppViewModels, initialCommand: S
             }
         }
 
-        TerminalOutput(lines = lines, fontSize = fontSize, modifier = Modifier.weight(1f).fillMaxWidth())
+        TerminalOutput(
+            lines = lines,
+            fontSize = fontSize,
+            onLongPress = { showSelectText = true },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
 
         KeyRow(
             keys = if (showBiosKeys) SpecialKeys.bios else SpecialKeys.terminal,
@@ -303,10 +333,152 @@ fun TerminalScreen(profile: ServerProfile, vms: AppViewModels, initialCommand: S
         TrustDialog("SSH host key", prompt, onAccept = vm::acceptHostKey, onReject = vm::rejectHostKey)
     }
     if (showHelp) IdracHelpDialog(onDismiss = { showHelp = false })
+    if (showPasteScript) {
+        PasteScriptDialog(
+            onSave = { path, script, args, run -> vm.saveScript(path, script, args, run) },
+            onDismiss = { showPasteScript = false },
+        )
+    }
+    if (showSelectText) {
+        SelectTextDialog(
+            text = vm.copyableOutput(),
+            fontSize = fontSize,
+            onCopyAll = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Terminal output", vm.copyableOutput()))
+            },
+            onDismiss = { showSelectText = false },
+        )
+    }
+}
+
+/** Multi-line paste box: the shell's own input is one line, and Android drops the line breaks of a paste there. */
+@Composable
+private fun PasteScriptDialog(
+    onSave: (path: String, script: String, args: String, run: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var path by rememberSaveable { mutableStateOf(ScriptUpload.DEFAULT_PATH) }
+    var script by rememberSaveable { mutableStateOf("") }
+    var args by rememberSaveable { mutableStateOf("") }
+    val pathValid = ScriptUpload.isValidPath(path)
+    val canSave = pathValid && script.isNotBlank()
+    val mono = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+    val plain = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Paste script") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = path,
+                    onValueChange = { path = it },
+                    label = { Text("Save as") },
+                    singleLine = true,
+                    isError = !pathValid,
+                    supportingText = { if (!pathValid) Text("An absolute file path, e.g. /root/setup.sh") },
+                    textStyle = mono,
+                    keyboardOptions = plain.copy(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth().testTag("script-path"),
+                )
+                OutlinedTextField(
+                    value = script,
+                    onValueChange = { script = it },
+                    label = { Text("Script") },
+                    placeholder = { Text("#!/bin/bash") },
+                    minLines = 8,
+                    maxLines = 14,
+                    textStyle = mono,
+                    keyboardOptions = plain,
+                    modifier = Modifier.fillMaxWidth().testTag("script-body"),
+                )
+                OutlinedTextField(
+                    value = args,
+                    onValueChange = { args = it },
+                    label = { Text("Arguments (optional)") },
+                    singleLine = true,
+                    textStyle = mono,
+                    keyboardOptions = plain,
+                    modifier = Modifier.fillMaxWidth().testTag("script-args"),
+                )
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(
+                    onClick = {
+                        onSave(path, script, args, false)
+                        onDismiss()
+                    },
+                    enabled = canSave,
+                    modifier = Modifier.testTag("script-save"),
+                ) { Text("Save only") }
+                TextButton(
+                    onClick = {
+                        onSave(path, script, args, true)
+                        onDismiss()
+                    },
+                    enabled = canSave,
+                    modifier = Modifier.testTag("script-run"),
+                ) { Text("Save & run", fontWeight = FontWeight.Bold) }
+            }
+        },
+    )
+}
+
+/**
+ * The terminal output as one selectable text, so Android's long-press handles can pick any lines. One text
+ * (not the live per-line list) keeps the line breaks when several lines are copied.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectTextDialog(text: String, fontSize: Float, onCopyAll: () -> Unit, onDismiss: () -> Unit) {
+    val vScroll = rememberScrollState()
+    // Open at the end, where the latest output is.
+    LaunchedEffect(vScroll.maxValue) { vScroll.scrollTo(vScroll.maxValue) }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = Color(0xFF101010)) {
+            Column {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text("Select text", style = MaterialTheme.typography.titleMedium)
+                            Text("Long-press and drag, then Copy", style = MaterialTheme.typography.labelSmall)
+                        }
+                    },
+                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close") } },
+                    actions = {
+                        TextButton(
+                            onClick = {
+                                onCopyAll()
+                                onDismiss()
+                            },
+                            modifier = Modifier.testTag("select-copy-all"),
+                        ) { Text("Copy all") }
+                    },
+                )
+                SelectionContainer(
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(vScroll).horizontalScroll(rememberScrollState()),
+                ) {
+                    Text(
+                        text = text,
+                        color = Color(0xFFE0E0E0),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = fontSize.sp,
+                        lineHeight = (fontSize * 1.2f).sp,
+                        softWrap = false,
+                        modifier = Modifier.padding(8.dp).testTag("select-text"),
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
-private fun TerminalOutput(lines: List<String>, fontSize: Float, modifier: Modifier) {
+private fun TerminalOutput(lines: List<String>, fontSize: Float, onLongPress: () -> Unit, modifier: Modifier) {
     val listState = rememberLazyListState()
     val hScroll = rememberScrollState()
     var followOutput by remember { mutableStateOf(true) }
@@ -322,7 +494,12 @@ private fun TerminalOutput(lines: List<String>, fontSize: Float, modifier: Modif
         if (followOutput && lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)
     }
 
-    Surface(modifier = modifier, color = Color(0xFF101010)) {
+    Surface(
+        modifier = modifier
+            .testTag("terminal-output")
+            .pointerInput(Unit) { detectTapGestures(onLongPress = { onLongPress() }) },
+        color = Color(0xFF101010),
+    ) {
         Box(Modifier.horizontalScroll(hScroll)) {
             LazyColumn(
                 state = listState,

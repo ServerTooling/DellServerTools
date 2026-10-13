@@ -7,6 +7,7 @@ import com.jcraft.jsch.JSchException
 import com.lilayam.dellservertools.core.ConnectionSettings
 import com.lilayam.dellservertools.core.IdracCommands
 import com.lilayam.dellservertools.core.ServerProfile
+import com.lilayam.dellservertools.core.ScriptUpload
 import com.lilayam.dellservertools.core.ServerType
 import com.lilayam.dellservertools.core.SshShellSession
 import com.lilayam.dellservertools.core.TerminalEmulator
@@ -232,6 +233,19 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             runCatching { current.send(text) }.onFailure { e ->
                 _state.update { it.copy(message = "Send failed: ${e.message}") }
             }
+        }
+    }
+
+    /** "Paste script": saves [script] as [path] on the host, then runs it (or lists the file) in the shell. */
+    fun saveScript(path: String, script: String, args: String, run: Boolean) {
+        val current = session ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { current.upload(path, ScriptUpload.normalize(script).toByteArray(Charsets.UTF_8)) }
+                .onSuccess {
+                    val line = if (run) ScriptUpload.runLine(path, args) else ScriptUpload.showLine(path)
+                    runCatching { current.send(line + "\r") }
+                }
+                .onFailure { e -> _state.update { it.copy(message = "Saving the script failed: ${e.message}") } }
         }
     }
 
