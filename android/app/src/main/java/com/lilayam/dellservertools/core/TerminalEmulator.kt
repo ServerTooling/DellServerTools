@@ -17,10 +17,29 @@ class TerminalEmulator(
     val rows: Int = 24,
     private val maxScrollback: Int = 2000,
 ) {
-    data class Snapshot(val lines: List<String>, val cursorLine: Int, val cursorColumn: Int)
+    /** [wrapped] marks lines that the terminal wrapped at the right margin, i.e. that continue on the next line. */
+    data class Snapshot(
+        val lines: List<String>,
+        val cursorLine: Int,
+        val cursorColumn: Int,
+        val wrapped: List<Boolean> = List(lines.size) { false },
+    ) {
+        /** The text as the host sent it: wrapped lines are joined again, so a long line copies as one. */
+        fun text(): String = buildString {
+            lines.forEachIndexed { i, line ->
+                append(line)
+                if (i < lines.lastIndex && !wrapped[i]) append('\n')
+            }
+        }
+    }
 
-    private val scrollback = ArrayDeque<String>()
+    private class Line(val text: String, val wrapped: Boolean)
+
+    private val scrollback = ArrayDeque<Line>()
     private var screen = Array(rows) { blankRow() }
+
+    /** Per screen row: it was filled to the margin and the text went on in the next row. Moves with the rows. */
+    private var wrapped = BooleanArray(rows)
     private var cursorRow = 0
     private var cursorCol = 0
     private var wrapPending = false
@@ -60,6 +79,7 @@ class TerminalEmulator(
     fun clear() {
         scrollback.clear()
         screen = Array(rows) { blankRow() }
+        wrapped = BooleanArray(rows)
         cursorRow = 0
         cursorCol = 0
         wrapPending = false
@@ -72,7 +92,11 @@ class TerminalEmulator(
     @Synchronized
     fun snapshot(): Snapshot {
         val lines = ArrayList<String>(scrollback.size + rows)
-        lines.addAll(scrollback)
+        val wraps = ArrayList<Boolean>(scrollback.size + rows)
+        scrollback.forEach {
+            lines.add(it.text)
+            wraps.add(it.wrapped)
+        }
         var lastRow = cursorRow
         for (r in rows - 1 downTo cursorRow + 1) {
             if (screen[r].any { it != ' ' }) {
@@ -81,12 +105,16 @@ class TerminalEmulator(
             }
         }
         for (r in 0..lastRow) {
-            lines.add(String(screen[r]).trimEnd())
+            lines.add(rowText(r))
+            wraps.add(wrapped[r])
         }
-        return Snapshot(lines, scrollback.size + cursorRow, cursorCol)
+        return Snapshot(lines, scrollback.size + cursorRow, cursorCol, wraps)
     }
 
     private fun blankRow() = CharArray(columns) { ' ' }
+
+    // A wrapped row keeps its trailing spaces: they are part of the line that goes on below.
+    private fun rowText(r: Int) = String(screen[r]).let { if (wrapped[r]) it else it.trimEnd() }
 
     private fun process(c: Char) {
         when (state) {
@@ -219,6 +247,7 @@ class TerminalEmulator(
 
     private fun putChar(c: Char) {
         if (wrapPending) {
+            wrapped[cursorRow] = true
             cursorCol = 0
             lineFeed()
             wrapPending = false
@@ -250,18 +279,26 @@ class TerminalEmulator(
 
     private fun scrollUp(top: Int, bottom: Int) {
         if (top == 0) {
-            addScrollback(String(screen[0]).trimEnd())
+            addScrollback(Line(rowText(0), wrapped[0]))
         }
-        for (r in top until bottom) screen[r] = screen[r + 1]
+        for (r in top until bottom) {
+            screen[r] = screen[r + 1]
+            wrapped[r] = wrapped[r + 1]
+        }
         screen[bottom] = blankRow()
+        wrapped[bottom] = false
     }
 
     private fun scrollDown(top: Int, bottom: Int) {
-        for (r in bottom downTo top + 1) screen[r] = screen[r - 1]
+        for (r in bottom downTo top + 1) {
+            screen[r] = screen[r - 1]
+            wrapped[r] = wrapped[r - 1]
+        }
         screen[top] = blankRow()
+        wrapped[top] = false
     }
 
-    private fun addScrollback(line: String) {
+    private fun addScrollback(line: Line) {
         scrollback.addLast(line)
         while (scrollback.size > maxScrollback) scrollback.removeFirst()
     }
@@ -269,8 +306,10 @@ class TerminalEmulator(
     private fun pushScreenToScrollback() {
         var last = -1
         for (r in 0 until rows) if (screen[r].any { it != ' ' }) last = r
-        for (r in 0..last) addScrollback(String(screen[r]).trimEnd())
+        // The last row can't continue on a page that is about to be cleared.
+        for (r in 0..last) addScrollback(Line(rowText(r), wrapped[r] && r < last))
         screen = Array(rows) { blankRow() }
+        wrapped = BooleanArray(rows)
         cursorRow = 0
         cursorCol = 0
     }
@@ -279,10 +318,16 @@ class TerminalEmulator(
         when (mode) {
             0 -> {
                 eraseInLine(0)
-                for (r in cursorRow + 1 until rows) screen[r] = blankRow()
+                for (r in cursorRow + 1 until rows) {
+                    screen[r] = blankRow()
+                    wrapped[r] = false
+                }
             }
             1 -> {
-                for (r in 0 until cursorRow) screen[r] = blankRow()
+                for (r in 0 until cursorRow) {
+                    screen[r] = blankRow()
+                    wrapped[r] = false
+                }
                 eraseInLine(1)
             }
             else -> {
@@ -304,6 +349,8 @@ class TerminalEmulator(
             else -> 0 until columns
         }
         for (i in range) line[i] = ' '
+        // Erasing up to the margin ends the line here.
+        if (mode != 1) wrapped[cursorRow] = false
     }
 
     private fun insertLines(n: Int) {
@@ -314,8 +361,12 @@ class TerminalEmulator(
     private fun deleteLines(n: Int) {
         if (cursorRow !in scrollTop..scrollBottom) return
         repeat(n) {
-            for (r in cursorRow until scrollBottom) screen[r] = screen[r + 1]
+            for (r in cursorRow until scrollBottom) {
+                screen[r] = screen[r + 1]
+                wrapped[r] = wrapped[r + 1]
+            }
             screen[scrollBottom] = blankRow()
+            wrapped[scrollBottom] = false
         }
     }
 

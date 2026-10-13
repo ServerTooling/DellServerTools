@@ -106,6 +106,36 @@ class TerminalEmulatorTest {
     }
 
     @Test
+    fun `text joins a line the terminal wrapped, also after it scrolled into scrollback`() {
+        val term = TerminalEmulator(columns = 10, rows = 2)
+        // e.g. a 95-character known_hosts line on an 80-column screen
+        term.feed("0123456789abcde\r\nnext\r\n")
+        assertEquals(listOf("0123456789", "abcde", "next", ""), lines(term))
+        assertEquals("0123456789abcde\nnext\n", term.snapshot().text())
+    }
+
+    @Test
+    fun `text keeps a line break after a line that exactly fills the width`() {
+        val term = TerminalEmulator(columns = 10, rows = 3)
+        term.feed("0123456789\r\nx")
+        assertEquals("0123456789\nx", term.snapshot().text())
+    }
+
+    @Test
+    fun `text keeps a space that fell on the wrap`() {
+        val term = TerminalEmulator(columns = 5, rows = 3)
+        term.feed("abcd ef")
+        assertEquals("abcd ef", term.snapshot().text())
+    }
+
+    @Test
+    fun `erasing a wrapped row ends the line there`() {
+        val term = TerminalEmulator(columns = 5, rows = 3)
+        term.feed("abcdefg\u001b[1;1H\u001b[2K")
+        assertEquals("\nfg", term.snapshot().text())
+    }
+
+    @Test
     fun `clear empties everything`() {
         val term = TerminalEmulator(columns = 10, rows = 2)
         term.feed("a\r\nb\r\nc")
