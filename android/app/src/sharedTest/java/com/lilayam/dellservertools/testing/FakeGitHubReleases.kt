@@ -8,7 +8,10 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import okio.Buffer
 
-/** Fake of GitHub's "latest release" API and its APK download, for the app's self-update. */
+/**
+ * Fake of GitHub's "latest release" API, the same release on the website (the fallback when the API is
+ * rate limited) and its APK download, for the app's self-update.
+ */
 class FakeGitHubReleases : AutoCloseable {
     val server = MockWebServer()
     val requests = CopyOnWriteArrayList<RecordedRequest>()
@@ -17,15 +20,35 @@ class FakeGitHubReleases : AutoCloseable {
     @Volatile
     var versionCode: Long? = 1000
 
+    /** Answer API calls with GitHub's rate-limit 403, as when the IP's anonymous quota is spent. */
+    @Volatile
+    var apiRateLimited = false
+
     val apkBytes = ByteArray(200_000) { (it % 251).toByte() }
 
     init {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 requests += request
+                val code = versionCode
                 return when (request.path) {
-                    LATEST_PATH -> versionCode?.let { MockResponse().setBody(releaseJson(it)) }
-                        ?: MockResponse().setResponseCode(404).setBody("""{"message":"Not Found"}""")
+                    LATEST_PATH -> when {
+                        apiRateLimited -> MockResponse().setResponseCode(403)
+                            .setBody("""{"message":"API rate limit exceeded for 192.0.2.1."}""")
+                        code != null -> MockResponse().setBody(releaseJson(code))
+                        else -> MockResponse().setResponseCode(404).setBody("""{"message":"Not Found"}""")
+                    }
+                    "$WEB_PATH/latest" -> if (code != null) {
+                        MockResponse().setResponseCode(302).setHeader("Location", url("$WEB_PATH/tag/build-$code"))
+                    } else {
+                        MockResponse().setBody("<html>No releases</html>")
+                    }
+                    "$WEB_PATH/expanded_assets/build-$code" -> MockResponse().setBody(
+                        """<a href="$WEB_PATH/download/build-$code/DellServerTools-$code.apk">APK</a>""" +
+                            """<a href="$WEB_PATH/archive/refs/tags/build-$code.zip">Source</a>""",
+                    )
+                    "$WEB_PATH/download/build-$code/DellServerTools-$code.apk" ->
+                        MockResponse().setResponseCode(302).setHeader("Location", url("/storage/apk"))
                     // Like GitHub, the asset link redirects to the storage host.
                     "/download/apk" -> MockResponse().setResponseCode(302).setHeader("Location", url("/storage/apk"))
                     "/storage/apk" -> MockResponse().setBody(Buffer().write(apkBytes))
@@ -38,6 +61,8 @@ class FakeGitHubReleases : AutoCloseable {
     }
 
     fun url(path: String = LATEST_PATH): String = server.url(path).toString()
+
+    fun webUrl(): String = url(WEB_PATH)
 
     private fun releaseJson(code: Long) = """
         {
@@ -54,5 +79,6 @@ class FakeGitHubReleases : AutoCloseable {
 
     companion object {
         const val LATEST_PATH = "/repos/ServerTooling/DellServerTools/releases/latest"
+        const val WEB_PATH = "/ServerTooling/DellServerTools/releases"
     }
 }

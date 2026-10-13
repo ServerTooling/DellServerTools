@@ -52,6 +52,39 @@ class AppUpdateIntegrationTest {
     }
 
     @Test
+    fun `falls back to the website when the API is rate limited`() {
+        github.apiRateLimited = true
+        github.versionCode = 105
+        val release = AppUpdate.checkForUpdate(104, github.url(), github.webUrl())!!
+        assertEquals(105, release.versionCode)
+        assertEquals("build-105", release.tag)
+        assertEquals(github.url("${FakeGitHubReleases.WEB_PATH}/tag/build-105"), release.pageUrl)
+        assertEquals(
+            listOf(
+                FakeGitHubReleases.LATEST_PATH,
+                "${FakeGitHubReleases.WEB_PATH}/latest",
+                "${FakeGitHubReleases.WEB_PATH}/expanded_assets/build-105",
+            ),
+            github.requests.map { it.path },
+        )
+        assertNull(AppUpdate.checkForUpdate(105, github.url(), github.webUrl()))
+
+        // The APK link from the website downloads like the API's.
+        val dir = Files.createTempDirectory("update").toFile()
+        val apk = File(dir, "DellServerTools.apk")
+        AppUpdate.download(release, apk)
+        assertArrayEquals(github.apkBytes, apk.readBytes())
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun `website fallback with nothing published finds no update`() {
+        github.apiRateLimited = true
+        github.versionCode = null
+        assertNull(AppUpdate.checkForUpdate(1, github.url(), github.webUrl()))
+    }
+
+    @Test
     fun `server errors are reported`() {
         assertThrows<IOException> { AppUpdate.checkForUpdate(1, github.url("/error")) }
     }

@@ -19,6 +19,9 @@ data class AppRelease(val versionCode: Long, val tag: String, val apkUrl: String
 object AppUpdate {
     const val LATEST_RELEASE_URL = "https://api.github.com/repos/ServerTooling/DellServerTools/releases/latest"
 
+    /** The same releases on the website, which isn't subject to the API's anonymous rate limit. */
+    const val WEB_RELEASES_URL = "https://github.com/ServerTooling/DellServerTools/releases"
+
     private val apkName = Regex("""^DellServerTools-(\d+)\.apk$""")
 
     /** Reads a GitHub "latest release" response; null when it has no APK in the expected form. */
@@ -38,19 +41,66 @@ object AppUpdate {
         return null
     }
 
-    /** The latest release if it is newer than [installedVersionCode], else null. */
-    fun checkForUpdate(installedVersionCode: Long, url: String = LATEST_RELEASE_URL): AppRelease? {
+    /**
+     * The latest release if it is newer than [installedVersionCode], else null. Anonymous API calls are
+     * limited to 60 an hour per IP address, shared by everything on the same home network (a pve-runners
+     * host checking for its own updates used it all up), so when the API refuses, the release is read
+     * from the website at [webUrl] instead.
+     */
+    fun checkForUpdate(
+        installedVersionCode: Long,
+        url: String = LATEST_RELEASE_URL,
+        webUrl: String = WEB_RELEASES_URL,
+    ): AppRelease? {
         val conn = open(url)
         conn.setRequestProperty("Accept", "application/vnd.github+json")
-        try {
-            // No release published yet.
-            if (conn.responseCode == 404) return null
-            if (conn.responseCode != 200) throw IOException("GitHub answered HTTP ${conn.responseCode}")
-            val release = parseRelease(conn.inputStream.bufferedReader().use { it.readText() }) ?: return null
-            return release.takeIf { it.versionCode > installedVersionCode }
+        val release = try {
+            when (conn.responseCode) {
+                200 -> parseRelease(conn.inputStream.bufferedReader().use { it.readText() })
+                // No release published yet.
+                404 -> null
+                403, 429 -> latestFromWeb(webUrl)
+                else -> throw IOException("GitHub answered HTTP ${conn.responseCode}")
+            }
         } finally {
             conn.disconnect()
         }
+        return release?.takeIf { it.versionCode > installedVersionCode }
+    }
+
+    /**
+     * `releases/latest` redirects to the latest release's tag page, and `releases/expanded_assets/<tag>`
+     * is the asset list that page loads; the APK's file name carries the version code.
+     */
+    private fun latestFromWeb(webUrl: String): AppRelease? {
+        val latest = open("$webUrl/latest").apply { instanceFollowRedirects = false }
+        val location = try {
+            when (latest.responseCode) {
+                in 300..399 -> latest.getHeaderField("Location")
+                // No release published yet: GitHub shows the (empty) release list.
+                200, 404 -> return null
+                else -> throw IOException("GitHub answered HTTP ${latest.responseCode}")
+            }
+        } finally {
+            latest.disconnect()
+        }
+        val tag = location?.substringAfter("/releases/tag/", "")?.takeIf { it.isNotEmpty() && "/" !in it }
+            ?: throw IOException("Unexpected answer from GitHub")
+        val assets = open("$webUrl/expanded_assets/$tag")
+        val html = try {
+            if (assets.responseCode != 200) throw IOException("GitHub answered HTTP ${assets.responseCode}")
+            assets.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            assets.disconnect()
+        }
+        val code = Regex("""/releases/download/${Regex.escape(tag)}/DellServerTools-(\d+)\.apk""")
+            .find(html)?.groupValues?.get(1)?.toLongOrNull() ?: return null
+        return AppRelease(
+            versionCode = code,
+            tag = tag,
+            apkUrl = "$webUrl/download/$tag/DellServerTools-$code.apk",
+            pageUrl = "$webUrl/tag/$tag",
+        )
     }
 
     /** Downloads the APK to [dest], reporting progress as a fraction (or -1 when the size is unknown). */
