@@ -32,6 +32,8 @@ abstract class ProxmoxE2ETestBase : E2ETest() {
         type("field-host", "127.0.0.1")
         type("field-port", pve.port.toString(), replace = true)
         type("field-password", "s3cret")
+        // The fake serves pve-runners' API on the same port.
+        type("field-runners-port", pve.port.toString(), replace = true)
         tap("field-remember")
         tap("save")
 

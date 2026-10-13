@@ -208,6 +208,15 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
                 section("Storage")
                 items(storage, key = { it.id }) { s -> StorageRow(s.name, s.node, s.disk, s.maxDisk, s.status) }
             }
+            // Last, so the guests stay on the first screen.
+            if (state.connected) {
+                item {
+                    OutlinedButton(
+                        onClick = { vms.servers.navigate(Screen.Runners(profile.id)) },
+                        modifier = Modifier.fillMaxWidth().testTag("open-runners"),
+                    ) { Text("GitHub runners (pve-runners)") }
+                }
+            }
         }
     }
 
@@ -340,7 +349,7 @@ internal fun BusyBar(busy: String?) {
 }
 
 @Composable
-private fun AutoRefresh(enabled: Boolean, intervalMs: Long, refresh: () -> Unit) {
+internal fun AutoRefresh(enabled: Boolean, intervalMs: Long, refresh: () -> Unit) {
     LaunchedEffect(enabled) {
         while (enabled) {
             delay(intervalMs)

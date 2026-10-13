@@ -15,6 +15,7 @@ import com.lilayam.dellservertools.core.proxmox.NodeStatus
 import com.lilayam.dellservertools.core.proxmox.ProxmoxApiException
 import com.lilayam.dellservertools.core.proxmox.ProxmoxClient
 import com.lilayam.dellservertools.core.proxmox.ProxmoxCredentials
+import com.lilayam.dellservertools.core.proxmox.RunnersClient
 import com.lilayam.dellservertools.core.proxmox.Snapshot
 import com.lilayam.dellservertools.core.proxmox.StorageInfo
 import com.lilayam.dellservertools.core.proxmox.TaskSummary
@@ -109,6 +110,10 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         client?.consoleUrl(node, type, vmid, name)
 
     fun webUiUrl(mobile: Boolean): String? = client?.webUrl(mobile)
+
+    /** The pve-runners service on this host, reached with the same login and certificate pin. */
+    fun runnersClient(profile: ServerProfile): RunnersClient? =
+        client?.takeIf { this.profile?.id == profile.id }?.let { RunnersClient(it, profile.host, profile.runnersPort) }
 
     /** Connects to the server unless already connected to it with the same credentials. */
     fun open(profile: ServerProfile, password: String?, apiTokenSecret: String?) {

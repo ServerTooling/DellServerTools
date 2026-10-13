@@ -200,6 +200,8 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
     var tokenSecret by rememberSaveable { mutableStateOf("") }
     var consoleUrl by rememberSaveable { mutableStateOf(original.consoleUrl) }
     var webPort by rememberSaveable { mutableStateOf(original.webPort.toString()) }
+    var runnersPort by rememberSaveable { mutableStateOf(original.runnersPort.toString()) }
+    val runnersPortValue = runnersPort.toIntOrNull()?.takeIf { it in 1..65535 }
     val webPortValue = webPort.toIntOrNull()?.takeIf { it in 1..65535 }
     val consoleUrlValid = consoleUrl.isBlank() || consoleUrl.startsWith("http://") || consoleUrl.startsWith("https://")
     var showPassword by remember { mutableStateOf(false) }
@@ -211,7 +213,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
         (original.apiTokenId.isNotBlank() && vm.apiTokenSecret(original) != null)
     val valid = host.isNotBlank() && username.isNotBlank() && portValue != null &&
         (isIdrac || sshPortValue != null) && hasTokenSecret && consoleUrlValid &&
-        (!isIdrac || webPortValue != null)
+        (!isIdrac || webPortValue != null) && (isIdrac || runnersPortValue != null)
 
     Column(Modifier.fillMaxSize().imePadding()) {
         TopAppBar(
@@ -336,6 +338,15 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth().testTag("field-ssh-port"),
                 )
+                OutlinedTextField(
+                    value = runnersPort,
+                    onValueChange = { runnersPort = it.filter(Char::isDigit).take(5) },
+                    label = { Text("pve-runners port (GitHub runners)") },
+                    singleLine = true,
+                    isError = runnersPortValue == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth().testTag("field-runners-port"),
+                )
                 Text("API token (optional)", style = MaterialTheme.typography.labelLarge)
                 Text(
                     "Only needed if your account uses two-factor login. Create one under " +
@@ -380,6 +391,7 @@ fun EditServerScreen(screen: Screen.Edit, vm: ServersViewModel) {
                             rememberPassword = remember,
                             consoleUrl = if (isIdrac) consoleUrl else "",
                             webPort = webPortValue ?: original.webPort,
+                            runnersPort = runnersPortValue ?: original.runnersPort,
                         ),
                         password = password,
                         apiTokenSecret = tokenSecret,

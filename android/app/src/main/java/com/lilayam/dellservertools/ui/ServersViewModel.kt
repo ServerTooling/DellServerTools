@@ -29,6 +29,7 @@ sealed interface Screen {
     data class CloneGuest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
     data class Guest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
     data class Tasks(val profileId: String) : Screen
+    data class Runners(val profileId: String) : Screen
     data class TaskLog(val profileId: String, val node: String, val upid: String, val title: String) : Screen
     data class Web(val profileId: String, val url: String, val title: String, val isMainUi: Boolean) : Screen
 }

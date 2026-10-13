@@ -35,6 +35,8 @@ data class ServerProfile(
     val consoleUrl: String = "",
     /** iDRAC6 only: HTTPS port of the iDRAC web interface, used for the screen preview. */
     val webPort: Int = 443,
+    /** Proxmox only: port of the pve-runners service on the host (its `web.listen`). */
+    val runnersPort: Int = DEFAULT_RUNNERS_PORT,
 ) {
     val displayName: String get() = name.ifBlank { host }
 
@@ -60,8 +62,11 @@ data class ServerProfile(
         .put("rememberPassword", rememberPassword)
         .put("consoleUrl", consoleUrl)
         .put("webPort", webPort)
+        .put("runnersPort", runnersPort)
 
     companion object {
+        const val DEFAULT_RUNNERS_PORT = 8765
+
         fun defaultPort(type: ServerType): Int = when (type) {
             ServerType.IDRAC6 -> 22
             ServerType.PROXMOX -> 8006
@@ -82,6 +87,7 @@ data class ServerProfile(
                 rememberPassword = json.optBoolean("rememberPassword", false),
                 consoleUrl = json.optString("consoleUrl"),
                 webPort = json.optInt("webPort", 443),
+                runnersPort = json.optInt("runnersPort", DEFAULT_RUNNERS_PORT),
             )
         }
 

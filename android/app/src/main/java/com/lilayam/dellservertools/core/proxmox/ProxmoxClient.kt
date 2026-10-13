@@ -32,7 +32,7 @@ class ProxmoxClient(
     pinnedFingerprint: String?,
 ) {
     val baseUrl: String = "https://${formatHostForUrl(host)}:$port"
-    private val tls = PinnedTls(pinnedFingerprint)
+    internal val tls = PinnedTls(pinnedFingerprint)
 
     @Volatile
     var ticket: ProxmoxTicket? = null
@@ -185,6 +185,21 @@ class ProxmoxClient(
         }
         return "$baseUrl/?$params"
     }
+
+    /**
+     * What pve-runners' API takes in its Authorization header: the same API token, or the login
+     * ticket as Proxmox's own cookie (logging in first if needed). The service checks it with Proxmox.
+     */
+    fun runnersAuthorization(): String = when (credentials) {
+        is ProxmoxCredentials.ApiToken -> "PVEAPIToken=${credentials.tokenId}=${credentials.secret}"
+        is ProxmoxCredentials.Password -> {
+            val t = ticket ?: run { login(); ticket!! }
+            "PVEAuthCookie=${enc(t.ticket)}"
+        }
+    }
+
+    /** Whether a 401 might be an expired ticket, so logging in again could help. */
+    val canRenewLogin: Boolean get() = credentials is ProxmoxCredentials.Password
 
     fun get(path: String): Any? = request("GET", path, emptyMap())
 

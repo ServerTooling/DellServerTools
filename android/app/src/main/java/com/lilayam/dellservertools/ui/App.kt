@@ -47,6 +47,7 @@ class AppViewModels(
     val proxmox: ProxmoxViewModel,
     val idracScreen: IdracScreenViewModel,
     val update: UpdateViewModel,
+    val runners: RunnersViewModel,
 )
 
 @Composable
@@ -98,6 +99,7 @@ fun DellServerToolsApp(vms: AppViewModels, onExit: () -> Unit) {
                     is Screen.CloneGuest -> WithProfile(vms, screen.profileId) { CloneGuestScreen(it, screen, vms) }
                     is Screen.Guest -> WithProfile(vms, screen.profileId) { GuestScreen(it, screen, vms) }
                     is Screen.Tasks -> WithProfile(vms, screen.profileId) { TasksScreen(it, vms) }
+                    is Screen.Runners -> WithProfile(vms, screen.profileId) { RunnersScreen(it, vms) }
                     is Screen.TaskLog -> WithProfile(vms, screen.profileId) { TaskLogScreen(screen, vms) }
                     is Screen.Web -> WithProfile(vms, screen.profileId) { WebScreen(it, screen, vms) }
                 }
