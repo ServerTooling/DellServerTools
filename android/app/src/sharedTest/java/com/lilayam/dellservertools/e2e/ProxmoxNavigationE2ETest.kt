@@ -25,12 +25,7 @@ class ProxmoxNavigationE2ETest : ProxmoxE2ETestBase() {
         waitForText("qmstart 100")
         compose.onNodeWithText("qmstart 100").performClick()
         waitForText("TASK OK")
-        // One screen at a time: popping the tasks list while its refresh is still landing made Compose measure a
-        // detached LazyColumn item ("LayoutNode should be attached to an owner") on a slow runner.
-        compose.waitForIdle()
         compose.onNodeWithContentDescription("Back").performClick()
-        waitForText("qmstart 100")
-        compose.waitForIdle()
         compose.onNodeWithContentDescription("Back").performClick()
 
         waitForText("pve")
