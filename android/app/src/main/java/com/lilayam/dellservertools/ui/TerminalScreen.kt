@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -438,7 +439,12 @@ private fun SelectTextDialog(text: String, fontSize: Float, onCopyAll: () -> Uni
     val vScroll = rememberScrollState()
     // Open at the end, where the latest output is.
     LaunchedEffect(vScroll.maxValue) { vScroll.scrollTo(vScroll.maxValue) }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // The dialog window draws behind the system bars (like the edge-to-edge activity), so the app bar takes the
+    // status bar inset and the text keeps clear of the navigation bar; otherwise the last lines can't be selected.
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
         Surface(Modifier.fillMaxSize(), color = Color(0xFF101010)) {
             Column {
                 TopAppBar(
@@ -460,7 +466,8 @@ private fun SelectTextDialog(text: String, fontSize: Float, onCopyAll: () -> Uni
                     },
                 )
                 SelectionContainer(
-                    Modifier.weight(1f).fillMaxWidth().verticalScroll(vScroll).horizontalScroll(rememberScrollState()),
+                    Modifier.weight(1f).fillMaxWidth().navigationBarsPadding()
+                        .verticalScroll(vScroll).horizontalScroll(rememberScrollState()),
                 ) {
                     Text(
                         text = text,
