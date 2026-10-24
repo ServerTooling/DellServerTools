@@ -65,6 +65,17 @@ class FakeProxmox : AutoCloseable {
     val nodeConfig = java.util.concurrent.ConcurrentHashMap(mapOf("acme" to "account=default", "acmedomain0" to "domain=pve.example.org"))
     val acmeAccounts = CopyOnWriteArrayList(listOf("default"))
 
+    /** Datacenter > Permissions: users (with their groups), tokens per user, groups, ACL lines, roles, pools, 2FA. */
+    val users = java.util.concurrent.ConcurrentHashMap(
+        mapOf("root@pam" to mapOf("enable" to "1"), "alice@pve" to mapOf("enable" to "1", "email" to "alice@example.org", "groups" to "admins")),
+    )
+    val tokens = java.util.concurrent.ConcurrentHashMap(mapOf("root@pam" to listOf("ci")))
+    val groups = java.util.concurrent.ConcurrentHashMap(mapOf("admins" to "Lab admins"))
+    val acl = CopyOnWriteArrayList(listOf(mapOf("path" to "/", "type" to "group", "ugid" to "admins", "roleid" to "Administrator", "propagate" to "1")))
+    val customRoles = java.util.concurrent.ConcurrentHashMap<String, String>()
+    val pools = java.util.concurrent.ConcurrentHashMap<String, MutableSet<Int>>()
+    val tfa = CopyOnWriteArrayList(listOf("alice@pve" to "totp1"))
+
     /** Whether VM 100 has been converted to a template. */
     @Volatile
     var vmTemplate = false
@@ -314,6 +325,7 @@ class FakeProxmox : AutoCloseable {
                     {"devpath":"/dev/sdb","model":"TEST HDD","type":"hdd","size":2000398934016,"health":"PASSED","wearout":"N/A","used":"ZFS"},
                     {"devpath":"/dev/sdc","model":"SPARE HDD","type":"hdd","size":4000787030016,"health":"PASSED","wearout":"N/A"}]""",
             )
+            path.startsWith("/access/") || path.startsWith("/pools") -> access(request, path)
             path.startsWith("/nodes/pve/disks/") || path.startsWith("/nodes/pve/certificates") ||
                 path.substringBefore('?') == "/nodes/pve/config" || path.startsWith("/cluster/acme") -> nodeAdmin(request, path)
             path.startsWith("/nodes/pve/storage/") && path.contains("/content") -> json("[]")
@@ -441,6 +453,117 @@ class FakeProxmox : AutoCloseable {
                 """[{"upid":"UPID:pve:00000001:qmstart:100:root@pam:","node":"pve","type":"qmstart","id":"100","user":"root@pam","starttime":1700000000,"endtime":1700000001,"status":"OK"}]""",
             )
             else -> error(501, "Method '$path' not implemented in FakeProxmox")
+        }
+    }
+
+    private fun access(request: RecordedRequest, fullPath: String): MockResponse {
+        val method = request.method.orEmpty()
+        val path = fullPath.substringBefore('?')
+        val parts = path.removePrefix("/").split('/').map { URLDecoder.decode(it, "UTF-8") }
+        fun obj(m: Map<String, Any?>) = org.json.JSONObject(m).toString()
+        return when {
+            path == "/access/users" && method == "GET" -> json(
+                users.entries.sortedBy { it.key }.joinToString(",", "[", "]") { (id, u) ->
+                    obj(u + ("userid" to id) + ("tokens" to org.json.JSONArray(tokens[id].orEmpty().map { mapOf("tokenid" to it, "privsep" to 1) })))
+                },
+            )
+            path == "/access/users" && method == "POST" -> {
+                val p = form(request)
+                users[p.getValue("userid")] = p - "userid" - "password"
+                json("null")
+            }
+            parts.size == 3 && parts[1] == "users" && method == "PUT" -> {
+                users[parts[2]] = users[parts[2]].orEmpty() + form(request)
+                json("null")
+            }
+            parts.size == 3 && parts[1] == "users" && method == "DELETE" -> {
+                users.remove(parts[2])
+                json("null")
+            }
+            parts.size == 5 && parts[3] == "token" && method == "POST" -> {
+                tokens[parts[2]] = tokens[parts[2]].orEmpty() + parts[4]
+                json(obj(mapOf("full-tokenid" to "${parts[2]}!${parts[4]}", "value" to "11111111-2222-3333-4444-555555555555")))
+            }
+            parts.size == 5 && parts[3] == "token" && method == "DELETE" -> {
+                tokens[parts[2]] = tokens[parts[2]].orEmpty() - parts[4]
+                json("null")
+            }
+            path == "/access/password" && method == "PUT" -> json("null")
+            path == "/access/domains" -> json("""[{"realm":"pam","type":"pam"},{"realm":"pve","type":"pve"}]""")
+            path == "/access/groups" && method == "GET" -> json(
+                groups.entries.sortedBy { it.key }.joinToString(",", "[", "]") { (id, comment) ->
+                    obj(mapOf("groupid" to id, "comment" to comment, "users" to users.filterValues { u -> u["groups"].orEmpty().split(',').contains(id) }.keys.sorted().joinToString(",")))
+                },
+            )
+            path == "/access/groups" && method == "POST" -> {
+                val p = form(request)
+                groups[p.getValue("groupid")] = p["comment"].orEmpty()
+                json("null")
+            }
+            parts.size == 3 && parts[1] == "groups" && method == "DELETE" -> {
+                groups.remove(parts[2])
+                json("null")
+            }
+            path == "/access/acl" && method == "GET" -> json(acl.joinToString(",", "[", "]") { obj(it) })
+            path == "/access/acl" && method == "PUT" -> {
+                val p = form(request)
+                val (type, ugid) = listOf("users" to "user", "groups" to "group", "tokens" to "token").first { p.containsKey(it.first) }
+                    .let { (param, type) -> type to p.getValue(param) }
+                val line = mapOf("path" to p.getValue("path"), "type" to type, "ugid" to ugid, "roleid" to p.getValue("roles"))
+                acl.removeIf { it - "propagate" == line }
+                if (p["delete"] != "1") acl += line + ("propagate" to p["propagate"].orEmpty().ifEmpty { "1" })
+                json("null")
+            }
+            path == "/access/roles" && method == "GET" -> json(
+                (
+                    listOf(
+                        obj(mapOf("roleid" to "Administrator", "special" to 1, "privs" to "Datastore.Audit,Sys.Audit,Sys.Modify,VM.Audit,VM.PowerMgmt")),
+                        obj(mapOf("roleid" to "PVEAuditor", "special" to 1, "privs" to "Datastore.Audit,Sys.Audit,VM.Audit")),
+                    ) + customRoles.entries.map { obj(mapOf("roleid" to it.key, "special" to 0, "privs" to it.value)) }
+                    ).joinToString(",", "[", "]"),
+            )
+            path == "/access/roles" && method == "POST" -> {
+                val p = form(request)
+                customRoles[p.getValue("roleid")] = p.getValue("privs")
+                json("null")
+            }
+            parts.size == 3 && parts[1] == "roles" && method == "PUT" -> {
+                customRoles[parts[2]] = form(request).getValue("privs")
+                json("null")
+            }
+            parts.size == 3 && parts[1] == "roles" && method == "DELETE" -> {
+                customRoles.remove(parts[2])
+                json("null")
+            }
+            path == "/access/tfa" -> json(
+                tfa.groupBy({ it.first }, { it.second }).entries.joinToString(",", "[", "]") { (user, ids) ->
+                    obj(mapOf("userid" to user, "entries" to org.json.JSONArray(ids.map { mapOf("id" to it, "type" to "totp", "description" to "phone", "created" to 1790000000) })))
+                },
+            )
+            parts.size == 4 && parts[1] == "tfa" && method == "DELETE" -> {
+                tfa.remove(parts[2] to parts[3])
+                json("null")
+            }
+            path == "/pools" && method == "GET" -> json(pools.keys.sorted().joinToString(",", "[", "]") { obj(mapOf("poolid" to it)) })
+            path == "/pools" && method == "POST" -> {
+                pools[form(request).getValue("poolid")] = java.util.concurrent.ConcurrentHashMap.newKeySet()
+                json("null")
+            }
+            parts.size == 2 && parts[0] == "pools" && method == "GET" -> json(
+                obj(mapOf("members" to org.json.JSONArray(pools[parts[1]].orEmpty().sorted().map { mapOf("vmid" to it, "type" to "qemu", "id" to "qemu/$it") }))),
+            )
+            parts.size == 2 && parts[0] == "pools" && method == "PUT" -> {
+                val p = form(request)
+                val ids = p["vms"].orEmpty().split(',').filter { it.isNotBlank() }.map { it.toInt() }
+                val members = pools.getValue(parts[1])
+                if (p["delete"] == "1") members.removeAll(ids.toSet()) else members.addAll(ids)
+                json("null")
+            }
+            parts.size == 2 && parts[0] == "pools" && method == "DELETE" -> {
+                pools.remove(parts[1])
+                json("null")
+            }
+            else -> error(501, "access $method $path")
         }
     }
 

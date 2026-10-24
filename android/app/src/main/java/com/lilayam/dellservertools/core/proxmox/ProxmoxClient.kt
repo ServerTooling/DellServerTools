@@ -378,6 +378,102 @@ class ProxmoxClient(
         return (if (renew) put(path, mapOf("force" to "1")) else post(path, emptyMap())) as? String
     }
 
+    // ---- users, groups, API tokens, permissions, roles, pools, two-factor
+
+    fun users(): List<PveUser> = PveUser.parse(get("/access/users?full=1") as JSONArray)
+
+    fun createUser(form: UserForm) {
+        post("/access/users", form.createParams())
+    }
+
+    fun updateUser(form: UserForm) {
+        put("/access/users/${enc(form.userid)}", form.updateParams())
+    }
+
+    fun deleteUser(userid: String) {
+        delete("/access/users/${enc(userid)}")
+    }
+
+    /**
+     * Sets a `pve`-realm user's password. Proxmox asks for the signed-in user's own password as
+     * [confirmation] when it changes someone else's or its own (PVE 8.1+); older versions ignore it.
+     */
+    fun setPassword(userid: String, password: String, confirmation: String) {
+        put("/access/password", linkedMapOf("userid" to userid, "password" to password).apply {
+            if (confirmation.isNotEmpty()) put("confirmation-password", confirmation)
+        })
+    }
+
+    fun realms(): List<String> = AccessJson.realms(get("/access/domains") as JSONArray)
+
+    fun groups(): List<PveGroup> = PveGroup.parse(get("/access/groups") as JSONArray)
+
+    fun createGroup(groupid: String, comment: String) {
+        post("/access/groups", linkedMapOf("groupid" to groupid).apply { if (comment.isNotBlank()) put("comment", comment.trim()) })
+    }
+
+    fun deleteGroup(groupid: String) {
+        delete("/access/groups/${enc(groupid)}")
+    }
+
+    /** Creates a token; the secret in the answer is never shown again. */
+    fun createToken(userid: String, tokenid: String, privsep: Boolean, expire: Long, comment: String): NewApiToken =
+        AccessJson.newToken(
+            post("/access/users/${enc(userid)}/token/${enc(tokenid)}", ApiToken.createParams(privsep, expire, comment)) as JSONObject,
+        )
+
+    fun deleteToken(userid: String, tokenid: String) {
+        delete("/access/users/${enc(userid)}/token/${enc(tokenid)}")
+    }
+
+    fun acl(): List<AclEntry> = AclEntry.parse(get("/access/acl") as JSONArray)
+
+    fun addAcl(entry: AclEntry) {
+        put("/access/acl", entry.addParams())
+    }
+
+    fun removeAcl(entry: AclEntry) {
+        put("/access/acl", entry.removeParams())
+    }
+
+    fun roles(): List<PveRole> = PveRole.parse(get("/access/roles") as JSONArray)
+
+    fun createRole(roleid: String, privs: Collection<String>) {
+        post("/access/roles", PveRole.createParams(roleid, privs))
+    }
+
+    /** Replaces the role's privileges with [privs]. */
+    fun updateRole(roleid: String, privs: Collection<String>) {
+        put("/access/roles/${enc(roleid)}", mapOf("privs" to privs.sorted().joinToString(",")))
+    }
+
+    fun deleteRole(roleid: String) {
+        delete("/access/roles/${enc(roleid)}")
+    }
+
+    fun pools(): List<PvePool> = PvePool.list(get("/pools") as JSONArray)
+
+    fun pool(poolid: String): PvePool = PvePool.detail(poolid, get("/pools/${enc(poolid)}") as JSONObject)
+
+    fun createPool(poolid: String, comment: String) {
+        post("/pools", linkedMapOf("poolid" to poolid).apply { if (comment.isNotBlank()) put("comment", comment.trim()) })
+    }
+
+    fun setPoolMembers(poolid: String, vmids: List<Int>, storages: List<String>, remove: Boolean) {
+        put("/pools/${enc(poolid)}", PvePool.membersParams(vmids, storages, remove))
+    }
+
+    fun deletePool(poolid: String) {
+        delete("/pools/${enc(poolid)}")
+    }
+
+    fun tfa(): List<TfaEntry> = TfaEntry.parse(get("/access/tfa") as JSONArray)
+
+    /** Removes one second factor, e.g. for a user who lost their phone. */
+    fun deleteTfa(userid: String, id: String) {
+        delete("/access/tfa/${enc(userid)}/${enc(id)}")
+    }
+
     // ---- firewall (datacenter, node, guest and security groups)
 
     fun firewallRules(scope: FirewallScope): List<FirewallRule> = FirewallRule.parse(get(scope.rulesPath) as JSONArray)
