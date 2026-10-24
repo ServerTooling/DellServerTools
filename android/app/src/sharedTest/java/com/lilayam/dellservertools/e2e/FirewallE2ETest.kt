@@ -1,12 +1,16 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -17,10 +21,11 @@ class FirewallE2ETest : ProxmoxE2ETestBase() {
 
     private fun waitFor(tag: String) = waitUntil { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
 
-    // Buttons are disabled while a change runs, and a tap on a disabled one is silently dropped.
+    // Buttons are disabled while a change runs, and a tap on a disabled one is silently dropped. The click goes
+    // through semantics because the previous change's snackbar can cover the button and swallow a real touch.
     private fun tapEnabled(tag: String) {
         waitUntil { compose.onAllNodes(hasTestTag(tag) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
-        tap(tag)
+        compose.onNodeWithTag(tag).performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
     }
 
     private fun openDatacenterFirewall() {
