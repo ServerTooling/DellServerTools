@@ -625,6 +625,10 @@ fun NodeScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
                         onClick = { vms.servers.navigate(Screen.NodeSystem(profile.id, node)) },
                         modifier = Modifier.testTag("node-system"),
                     ) { Text("System") }
+                    FilledTonalButton(
+                        onClick = { vms.servers.navigate(Screen.Graphs(profile.id, node, "Node $node graphs")) },
+                        modifier = Modifier.testTag("node-graphs"),
+                    ) { Text("Graphs") }
                     OutlinedButton(onClick = { confirm = "reboot" to "Reboot node $node" }) { Text("Reboot") }
                     OutlinedButton(onClick = { confirm = "shutdown" to "Shut down node $node" }) {
                         Text("Shut down", color = MaterialTheme.colorScheme.error)
@@ -939,6 +943,14 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                         },
                         modifier = Modifier.testTag("guest-firewall"),
                     ) { Text("Firewall") }
+                    OutlinedButton(
+                        onClick = {
+                            vms.servers.navigate(
+                                Screen.Graphs(profile.id, screen.node, "$kind ${screen.vmid} graphs", screen.type, screen.vmid),
+                            )
+                        },
+                        modifier = Modifier.testTag("guest-graphs"),
+                    ) { Text("Graphs") }
                 }
             }
             if (profile.usesApiToken) {
