@@ -172,6 +172,8 @@ private fun AddDeviceDialog(
             note = "Passed through by vendor and product ID, so it keeps working on another USB port.",
         ) { d -> onAdd(e.with(e.nextKey("usb"), VmHardware.usb(d))) }
         DeviceKind.PCI -> PciPicker(e, node, vms, onDismiss, onAdd)
+        // Added straight from the list above, no second dialog.
+        DeviceKind.SERIAL, DeviceKind.RNG, DeviceKind.AUDIO -> Unit
     }
 }
 
