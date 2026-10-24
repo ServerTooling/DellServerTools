@@ -103,7 +103,7 @@ class ProxmoxClientIntegrationTest {
         assertEquals(16, c.nodeStatus("pve").cpuCount)
         assertEquals(listOf("local", "local-zfs"), c.storage("pve").map { it.storage })
         assertEquals("stopped", c.guestStatus("pve", GuestType.QEMU, 100).status)
-        assertEquals(listOf("name", "cores", "memory").sorted(), c.guestConfig("pve", GuestType.QEMU, 100).map { it.first }.sorted())
+        assertEquals(listOf("name", "cores", "memory", "boot", "scsi0", "ide2", "net0").sorted(), c.guestConfig("pve", GuestType.QEMU, 100).map { it.first }.sorted())
         assertEquals(listOf("clean", "current"), c.snapshots("pve", GuestType.QEMU, 100).map { it.name })
         assertEquals(1, c.clusterTasks().size)
     }
@@ -181,5 +181,18 @@ class ProxmoxClientIntegrationTest {
         // A VM without a running agent is an API error, which the screen treats as "no addresses".
         assertThrows<ProxmoxApiException> { c.guestAddresses("pve", GuestType.QEMU, 100) }
         assertEquals(1, pve.requestsTo("/nodes/pve/qemu/100/agent/network-get-interfaces", "GET").size)
+    }
+
+    @Test
+    fun `sendKey presses a key in the VM with a PUT and the CSRF token`() {
+        val c = client()
+        c.login()
+        c.sendKey("pve", 100, "ret")
+        c.sendKey("pve", 100, "ctrl-alt-delete")
+
+        assertEquals(listOf("ret", "ctrl-alt-delete"), pve.sentKeys)
+        val requests = pve.requestsTo("/nodes/pve/qemu/100/sendkey", "PUT")
+        assertEquals(2, requests.size)
+        assertTrue(requests.all { it.getHeader("CSRFPreventionToken") == "csrf-token" })
     }
 }

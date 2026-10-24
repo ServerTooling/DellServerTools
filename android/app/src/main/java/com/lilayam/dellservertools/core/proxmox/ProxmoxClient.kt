@@ -234,6 +234,11 @@ class ProxmoxClient(
     fun guestAction(node: String, type: GuestType, vmid: Int, action: String): String? =
         post("${guestPath(node, type, vmid)}/status/$action", emptyMap()) as? String
 
+    /** Presses [key] (a [VmKeys] name, e.g. "ret") in a running QEMU VM. */
+    fun sendKey(node: String, vmid: Int, key: String) {
+        put("${guestPath(node, GuestType.QEMU, vmid)}/sendkey", VmKeys.params(key))
+    }
+
     fun snapshots(node: String, type: GuestType, vmid: Int): List<Snapshot> =
         ProxmoxJson.snapshots(get("${guestPath(node, type, vmid)}/snapshot") as JSONArray)
 
@@ -369,6 +374,8 @@ class ProxmoxClient(
     fun get(path: String): Any? = request("GET", path, emptyMap())
 
     fun post(path: String, params: Map<String, String>): Any? = request("POST", path, params)
+
+    fun put(path: String, params: Map<String, String>): Any? = request("PUT", path, params)
 
     private fun request(method: String, path: String, params: Map<String, String>): Any? {
         if (credentials is ProxmoxCredentials.Password && ticket == null) login()

@@ -13,6 +13,7 @@ import com.lilayam.dellservertools.core.proxmox.GuestAddress
 import com.lilayam.dellservertools.core.proxmox.GuestNetwork
 import com.lilayam.dellservertools.core.proxmox.LxcRequest
 import com.lilayam.dellservertools.core.proxmox.RestoreRequest
+import com.lilayam.dellservertools.core.proxmox.VmKeys
 import com.lilayam.dellservertools.core.proxmox.VmRequest
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.GuestStatus
@@ -282,6 +283,56 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
 
     fun guestAction(node: String, type: GuestType, vmid: Int, action: String, label: String) =
         runTask(label, node, refreshGuest = Triple(node, type, vmid)) { c -> c.guestAction(node, type, vmid, action) }
+
+    /** Stops a VM and starts it again, so config changes that wait for a fresh start (boot order) apply. */
+    fun stopAndStart(node: String, vmid: Int) =
+        runTask("Stop VM $vmid", node, Triple(node, GuestType.QEMU, vmid), afterDone = {
+            guestAction(node, GuestType.QEMU, vmid, "start", "Start VM $vmid")
+        }) { c -> c.guestAction(node, GuestType.QEMU, vmid, "stop") }
+
+    /** Presses one key in a running VM; only failures are reported, the console shows the rest. */
+    fun sendKey(node: String, vmid: Int, key: VmKeys.Key) {
+        val c = client ?: return
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { c.sendKey(node, vmid, key.name) } }
+            result.onFailure { e -> _state.update { it.copy(message = "${key.label} failed: ${describe(e)}") } }
+        }
+    }
+
+    /**
+     * Resets the VM and keeps pressing Enter through the firmware logo, so the "Press any key to boot
+     * from CD or DVD" prompt of a Windows ISO is answered (see [VmKeys.BOOT_PRESS_WINDOW_MS]).
+     */
+    fun resetAndBootFromCd(node: String, vmid: Int) {
+        val c = client ?: return
+        val label = "Boot VM $vmid from CD"
+        if (_state.value.busy != null) {
+            _state.update { it.copy(message = "Wait for \"${it.busy}\" to finish") }
+            return
+        }
+        val seconds = VmKeys.BOOT_PRESS_WINDOW_MS / 1000
+        _state.update { it.copy(busy = label, message = "$label: resetting, then pressing Enter for $seconds s") }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val upid = c.guestAction(node, GuestType.QEMU, vmid, "reset")
+                    if (upid != null && upid.startsWith("UPID:")) {
+                        val deadline = System.currentTimeMillis() + TASK_WAIT_MS
+                        while (c.taskStatus(node, upid).running && System.currentTimeMillis() < deadline) delay(250)
+                    }
+                    repeat(VmKeys.bootPresses) {
+                        c.sendKey(node, vmid, VmKeys.BOOT_KEY)
+                        delay(VmKeys.BOOT_PRESS_INTERVAL_MS)
+                    }
+                }
+            }
+            val message = result.fold(
+                { "$label: done. If Windows Setup isn't loading, try again." },
+                { e -> "$label failed: ${describe(e)}" },
+            )
+            _state.update { it.copy(busy = null, message = message) }
+        }
+    }
 
     fun createSnapshot(node: String, type: GuestType, vmid: Int, name: String, description: String) =
         runTask("Snapshot \"$name\"", node, refreshGuest = Triple(node, type, vmid)) { c ->
