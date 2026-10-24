@@ -120,7 +120,7 @@ fun FirewallScreen(screen: Screen.Firewall, vms: AppViewModels) {
 
 /** Loads [block] whenever [version] changes; null while loading, with the error text on failure. */
 @Composable
-private fun <T> rememberLoaded(vms: AppViewModels, version: Int, block: (com.lilayam.dellservertools.core.proxmox.ProxmoxClient) -> T): Pair<T?, String?> {
+internal fun <T> rememberLoaded(vms: AppViewModels, version: Int, block: (com.lilayam.dellservertools.core.proxmox.ProxmoxClient) -> T): Pair<T?, String?> {
     var value by remember { mutableStateOf<T?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(version) {
@@ -129,7 +129,7 @@ private fun <T> rememberLoaded(vms: AppViewModels, version: Int, block: (com.lil
     return value to error
 }
 
-private fun LazyListScope.loading(value: Any?, error: String?) {
+internal fun LazyListScope.loading(value: Any?, error: String?) {
     if (value == null) item { Text(error ?: "Loading…") }
 }
 
@@ -278,7 +278,7 @@ private fun RuleDialog(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChipRow(items: List<Pair<String, String>>, selected: String, tag: String, onSelect: (String) -> Unit) {
+internal fun ChipRow(items: List<Pair<String, String>>, selected: String, tag: String, onSelect: (String) -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         items.forEach { (value, label) ->
             FilterChip(
@@ -292,7 +292,7 @@ private fun ChipRow(items: List<Pair<String, String>>, selected: String, tag: St
 }
 
 @Composable
-private fun RuleField(label: String, value: String, tag: String, onChange: (String) -> Unit) {
+internal fun RuleField(label: String, value: String, tag: String, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value,
         onValueChange = { onChange(it.trim()) },
