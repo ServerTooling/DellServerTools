@@ -100,7 +100,7 @@ private fun statusColor(status: String): Color = when (status) {
 
 // ---------------------------------------------------------------- overview
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
     val vm = vms.proxmox
