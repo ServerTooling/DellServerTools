@@ -238,6 +238,10 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
                             onClick = { vms.servers.navigate(Screen.Firewall(profile.id, FirewallScope())) },
                             modifier = Modifier.testTag("open-firewall"),
                         ) { Text("Firewall") }
+                        OutlinedButton(
+                            onClick = { vms.servers.navigate(Screen.Permissions(profile.id)) },
+                            modifier = Modifier.testTag("open-permissions"),
+                        ) { Text("Permissions") }
                     }
                 }
                 item {

@@ -38,6 +38,7 @@ sealed interface Screen {
     data class Tasks(val profileId: String) : Screen
     data class BackupJobs(val profileId: String) : Screen
     data class Firewall(val profileId: String, val scope: FirewallScope) : Screen
+    data class Permissions(val profileId: String) : Screen
     data class NodeSystem(val profileId: String, val node: String) : Screen
     data class BackupJobEdit(val profileId: String, val id: String?) : Screen
     data class Runners(val profileId: String) : Screen
