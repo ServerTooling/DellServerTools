@@ -139,6 +139,10 @@ private fun LazyListScope.loading(value: Any?, error: String?) {
 private fun RulesTab(scope: FirewallScope, vms: AppViewModels, version: Int, busy: Boolean, reload: () -> Unit) {
     val vm = vms.proxmox
     val (rules, error) = rememberLoaded(vms, version) { it.firewallRules(scope) }
+    // For the rule dialog, loaded here rather than in it: a dialog's own LaunchedEffect never delivered its result
+    // under Robolectric. A security group can't reference another group.
+    val (groups) = rememberLoaded(vms, version) { if (scope.group == null) it.securityGroups() else emptyList() }
+    val (macros) = rememberLoaded(vms, 0) { it.firewallMacros() }
     var editing by remember { mutableStateOf<FirewallRuleForm?>(null) }
     var deleting by remember { mutableStateOf<FirewallRule?>(null) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -198,7 +202,7 @@ private fun RulesTab(scope: FirewallScope, vms: AppViewModels, version: Int, bus
         }
     }
     editing?.let { form ->
-        RuleDialog(form, scope, vms, onDismiss = { editing = null }) { saved ->
+        RuleDialog(form, scope, groups.orEmpty(), macros.orEmpty(), onDismiss = { editing = null }) { saved ->
             val current = saved.current
             if (current == null) {
                 vm.change("Add firewall rule", reload) { it.addFirewallRule(scope, saved) }
@@ -224,18 +228,12 @@ private fun RulesTab(scope: FirewallScope, vms: AppViewModels, version: Int, bus
 private fun RuleDialog(
     initial: FirewallRuleForm,
     scope: FirewallScope,
-    vms: AppViewModels,
+    groups: List<SecurityGroup>,
+    macros: List<Pair<String, String>>,
     onDismiss: () -> Unit,
     onSave: (FirewallRuleForm) -> Unit,
 ) {
     var f by remember { mutableStateOf(initial) }
-    var groups by remember { mutableStateOf<List<SecurityGroup>>(emptyList()) }
-    var macros by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        // A security group can't reference another group.
-        if (scope.group == null) vms.proxmox.fetch { it.securityGroups() }.onSuccess { groups = it }
-        vms.proxmox.fetch { it.firewallMacros() }.onSuccess { macros = it }
-    }
     val problem = f.validate()
     AlertDialog(
         onDismissRequest = onDismiss,
