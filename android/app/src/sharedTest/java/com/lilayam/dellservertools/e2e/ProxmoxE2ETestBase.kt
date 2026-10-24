@@ -1,5 +1,7 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -38,7 +40,8 @@ abstract class ProxmoxE2ETestBase : E2ETest() {
         tap("save")
 
         waitForText("Lab PVE")
-        compose.onNodeWithText("Lab PVE").performClick()
+        // The newest entry: on Robolectric a profile saved by an earlier test of the class can outlive its cleanup.
+        compose.onAllNodesWithText("Lab PVE").onLast().performClick()
 
         // First connection: the self-signed certificate must be approved, showing its fingerprint.
         waitForText("Trust this server?")
