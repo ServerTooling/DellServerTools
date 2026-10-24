@@ -83,13 +83,15 @@ class StorageE2ETest : ProxmoxE2ETestBase() {
         openLocalStorage()
         tapAction("storage-prune")
         waitForText("Prune backups on local")
-        // `local` has no retention set, so at first everything is kept.
-        waitForText("No keep count set: every backup is kept.")
+        // `local` has no retention set, so at first everything is kept. On the small test screen the
+        // keep boxes push this note below the fold, where the lazy list hasn't composed it.
+        waitUntil { runCatching { scrollListTo("No keep count set: every backup is kept.") }.isSuccess }
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("prune-keep-last"))
         type("prune-keep-last", "1")
-        tap("prune-preview")
+        tapAction("prune-preview")
         // Enabled once the preview marks something for removal.
         waitEnabled("prune-go")
-        tap("prune-go")
+        tapAction("prune-go")
         compose.onNodeWithText("Remove").performClick()
 
         waitUntil { pve.lastCall("DELETE", "/nodes/pve/storage/local/prunebackups") != null }
@@ -102,6 +104,8 @@ class StorageE2ETest : ProxmoxE2ETestBase() {
         waitForText("100 · web-01")
         compose.onNodeWithText("pve").performClick()
         waitForText("Node pve")
+        // The storage section only appears once the node's status has loaded.
+        waitForText("Uptime")
         scrollListTo("Add storage")
         tap("node-add-storage")
         waitForText("Add storage")
