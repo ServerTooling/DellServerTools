@@ -23,10 +23,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lilayam.dellservertools.core.proxmox.AcmeAccountForm
+import com.lilayam.dellservertools.core.proxmox.AcmeDirectory
 import com.lilayam.dellservertools.core.proxmox.AcmeDomain
 import com.lilayam.dellservertools.core.proxmox.AcmeSettings
 import com.lilayam.dellservertools.core.proxmox.CertificateInfo
@@ -46,6 +47,7 @@ import com.lilayam.dellservertools.core.proxmox.DiskVolume
 import com.lilayam.dellservertools.core.proxmox.Format
 import com.lilayam.dellservertools.core.proxmox.PhysicalDisk
 import com.lilayam.dellservertools.core.proxmox.SmartData
+import kotlinx.coroutines.launch
 
 private fun PhysicalDisk.short(): String = devPath.removePrefix("/dev/")
 
@@ -59,6 +61,8 @@ internal fun DisksTab(node: String, vms: AppViewModels, version: Int, busy: Bool
     val (disks, error) = rememberLoaded(vms, version) { it.disks(node) }
     val (volumes, _) = rememberLoaded(vms, version) { it.diskVolumes(node) }
     var opened by remember { mutableStateOf<PhysicalDisk?>(null) }
+    var smart by remember { mutableStateOf<Result<SmartData>?>(null) }
+    val scope = rememberCoroutineScope()
     var wiping by remember { mutableStateOf<PhysicalDisk?>(null) }
     var creating by remember { mutableStateOf<DiskCreateForm?>(null) }
     var destroying by remember { mutableStateOf<DiskVolume?>(null) }
@@ -67,7 +71,12 @@ internal fun DisksTab(node: String, vms: AppViewModels, version: Int, busy: Bool
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         loading(disks, error)
         items(disks.orEmpty(), key = { "disk-${it.devPath}" }) { d ->
-            Card(Modifier.fillMaxWidth().clickable { opened = d }.testTag("disk-${d.short()}")) {
+            Card(Modifier.fillMaxWidth().clickable {
+                opened = d
+                smart = null
+                // Loaded from the tap, not in the dialog: a dialog's own LaunchedEffect never delivered under Robolectric.
+                scope.launch { smart = vm.fetch { it.smart(node, d.devPath) } }
+            }.testTag("disk-${d.short()}")) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StatusDot(if (d.health.uppercase() in setOf("PASSED", "OK")) Green else if (d.health.isBlank()) Amber else Red)
@@ -123,9 +132,8 @@ internal fun DisksTab(node: String, vms: AppViewModels, version: Int, busy: Bool
 
     opened?.let { d ->
         DiskDialog(
-            node,
             d,
-            vms,
+            smart,
             busy,
             onDismiss = { opened = null },
             onInitGpt = { vm.task("Initialize ${d.devPath} with GPT", node, reload) { it.initGpt(node, d.devPath) }; opened = null },
@@ -164,19 +172,15 @@ internal fun DisksTab(node: String, vms: AppViewModels, version: Int, busy: Bool
 
 @Composable
 private fun DiskDialog(
-    node: String,
     disk: PhysicalDisk,
-    vms: AppViewModels,
+    result: Result<SmartData>?,
     busy: Boolean,
     onDismiss: () -> Unit,
     onInitGpt: () -> Unit,
     onWipe: () -> Unit,
 ) {
-    var smart by remember { mutableStateOf<SmartData?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(disk.devPath) {
-        vms.proxmox.fetch { it.smart(node, disk.devPath) }.onSuccess { smart = it }.onFailure { error = it.message }
-    }
+    val smart = result?.getOrNull()
+    val error = result?.exceptionOrNull()?.let { it.message ?: "Couldn't read SMART." }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(disk.devPath) },
@@ -199,7 +203,7 @@ private fun DiskDialog(
                             Text(s.text, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                         }
                     }
-                    error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)
+                    error != null -> Text(error, color = MaterialTheme.colorScheme.error)
                     else -> Text("Reading SMART…")
                 }
                 if (disk.used.isBlank()) {
@@ -282,6 +286,8 @@ internal fun CertificatesTab(node: String, vms: AppViewModels, version: Int, bus
     var removingCustom by remember { mutableStateOf(false) }
     var domain by remember { mutableStateOf<AcmeDomain?>(null) }
     var registering by remember { mutableStateOf(false) }
+    var directories by remember { mutableStateOf<Result<AcmeChoices>?>(null) }
+    val scope = rememberCoroutineScope()
     var ordering by remember { mutableStateOf<Boolean?>(null) }
     val list = certs.orEmpty()
     val custom = list.firstOrNull { it.isCustom }
@@ -335,7 +341,17 @@ internal fun CertificatesTab(node: String, vms: AppViewModels, version: Int, bus
                             Text("Add domain")
                         }
                     }
-                    OutlinedButton(onClick = { registering = true }, enabled = !busy, modifier = Modifier.testTag("acme-register")) {
+                    OutlinedButton(onClick = {
+                        registering = true
+                        directories = null
+                        // Loaded from the tap, not in the dialog: a dialog's own LaunchedEffect never delivered under Robolectric.
+                        scope.launch {
+                            directories = vm.fetch { c ->
+                                val dirs = c.acmeDirectories()
+                                AcmeChoices(dirs, dirs.firstOrNull()?.let { d -> mapOf(d.url to c.acmeTermsOfService(d.url)) }.orEmpty())
+                            }
+                        }
+                    }, enabled = !busy, modifier = Modifier.testTag("acme-register")) {
                         Text("Register account")
                     }
                     if (a.domains.isNotEmpty() && !accounts.isNullOrEmpty()) {
@@ -385,7 +401,7 @@ internal fun CertificatesTab(node: String, vms: AppViewModels, version: Int, bus
         }
     }
     if (registering) {
-        AcmeAccountDialog(vms, onDismiss = { registering = false }) { form ->
+        AcmeAccountDialog(vm, directories, onDismiss = { registering = false }) { form ->
             vm.task("Register ACME account ${form.name}", node, reload) { it.registerAcmeAccount(form) }
             registering = false
         }
@@ -483,18 +499,23 @@ private fun AcmeDomainDialog(initial: AcmeDomain, plugins: List<String>, onDismi
 }
 
 @Composable
-private fun AcmeAccountDialog(vms: AppViewModels, onDismiss: () -> Unit, onRegister: (AcmeAccountForm) -> Unit) {
-    val (directories, error) = rememberLoaded(vms, 0) { it.acmeDirectories() }
+private fun AcmeAccountDialog(
+    vm: ProxmoxViewModel,
+    loaded: Result<AcmeChoices>?,
+    onDismiss: () -> Unit,
+    onRegister: (AcmeAccountForm) -> Unit,
+) {
+    val choices = loaded?.getOrNull()
+    val error = loaded?.exceptionOrNull()?.message
     var f by remember { mutableStateOf(AcmeAccountForm()) }
-    var tos by remember { mutableStateOf("") }
+    // Terms of service per directory URL; the first directory's come with the list, others load from the tap.
+    var terms by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var accepted by remember { mutableStateOf(false) }
-    LaunchedEffect(directories) { if (f.directory.isEmpty()) directories?.firstOrNull()?.let { f = f.copy(directory = it.url) } }
-    LaunchedEffect(f.directory) {
-        tos = ""
-        accepted = false
-        if (f.directory.isNotEmpty()) vms.proxmox.fetch { it.acmeTermsOfService(f.directory) }.onSuccess { tos = it }
-    }
-    val problem = f.validate() ?: if (tos.isNotEmpty() && !accepted) "Accept the terms of service." else null
+    val scope = rememberCoroutineScope()
+    val directory = f.directory.ifEmpty { choices?.directories?.firstOrNull()?.url.orEmpty() }
+    val tos = (choices?.firstTerms.orEmpty() + terms)[directory].orEmpty()
+    val form = f.copy(directory = directory, tosUrl = tos)
+    val problem = form.validate() ?: if (tos.isNotEmpty() && !accepted) "Accept the terms of service." else null
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Register ACME account") },
@@ -503,7 +524,14 @@ private fun AcmeAccountDialog(vms: AppViewModels, onDismiss: () -> Unit, onRegis
                 RuleField("Account name", f.name, "acme-account-name") { f = f.copy(name = it) }
                 RuleField("E-mail", f.contact, "acme-account-email") { f = f.copy(contact = it) }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                ChipRow(directories.orEmpty().map { it.url to it.name }, f.directory, "acme-dir") { f = f.copy(directory = it) }
+                if (loaded == null) Text("Loading…")
+                ChipRow(choices?.directories.orEmpty().map { it.url to it.name }, directory, "acme-dir") { url ->
+                    f = f.copy(directory = url)
+                    accepted = false
+                    if (url !in terms && url !in choices?.firstTerms.orEmpty()) {
+                        scope.launch { vm.fetch { it.acmeTermsOfService(url) }.onSuccess { t -> terms = terms + (url to t) } }
+                    }
+                }
                 if (tos.isNotEmpty()) {
                     Text("Terms of service: $tos", style = MaterialTheme.typography.bodySmall)
                     CheckRow("I accept the terms of service", accepted, Modifier.testTag("acme-tos")) { accepted = it }
@@ -513,7 +541,7 @@ private fun AcmeAccountDialog(vms: AppViewModels, onDismiss: () -> Unit, onRegis
         },
         confirmButton = {
             TextButton(
-                onClick = { onRegister(f.copy(tosUrl = tos)) },
+                onClick = { onRegister(form) },
                 enabled = problem == null,
                 modifier = Modifier.testTag("acme-account-go"),
             ) { Text("Register") }
@@ -521,3 +549,6 @@ private fun AcmeAccountDialog(vms: AppViewModels, onDismiss: () -> Unit, onRegis
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
+
+/** The ACME directories to register with, and the first one's terms of service (keyed by its URL). */
+private class AcmeChoices(val directories: List<AcmeDirectory>, val firstTerms: Map<String, String>)
