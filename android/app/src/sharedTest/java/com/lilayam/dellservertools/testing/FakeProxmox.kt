@@ -225,6 +225,19 @@ class FakeProxmox : AutoCloseable {
         val status = if (vmRunning.get()) "running" else "stopped"
         return when {
             path == "/version" -> json("""{"version":"8.2.4","release":"8.2"}""")
+            // ---- graphs: three samples a minute apart, the middle one a gap for the guest
+            path.substringBefore('?').endsWith("/rrddata") -> json(
+                when {
+                    "/storage/" in path -> """[{"time":1790000000,"used":100,"total":1000},{"time":1790000060,"used":200,"total":1000}]"""
+                    "/qemu/" in path || "/lxc/" in path ->
+                        """[{"time":1790000000,"cpu":0.25,"mem":1073741824,"maxmem":4294967296,"netin":1000,"netout":2000},
+                            {"time":1790000060},
+                            {"time":1790000120,"cpu":0.5,"mem":2147483648,"maxmem":4294967296,"netin":3000,"netout":4000}]"""
+                    else ->
+                        """[{"time":1790000000,"cpu":0.1,"iowait":0.01,"loadavg":0.5,"memused":8589934592,"memtotal":68719476736},
+                            {"time":1790000060,"cpu":0.2,"iowait":0.02,"loadavg":0.7,"memused":9663676416,"memtotal":68719476736}]"""
+                },
+            )
             // ---- VM hardware
             path == "/nodes/pve/hardware/usb" -> json(
                 """[{"busnum":1,"devnum":1,"vendid":"0x1d6b","prodid":"0x0002","product":"EHCI Host Controller","class":9},
