@@ -238,6 +238,89 @@ class ProxmoxClient(
     /** Runs a job's backup now on [node], as the web UI's Run now does. Returns the task UPID. */
     fun runBackupJob(node: String, form: BackupJobForm): String? = post("/nodes/${enc(node)}/vzdump", form.runParams()) as? String
 
+    // ---- firewall (datacenter, node, guest and security groups)
+
+    fun firewallRules(scope: FirewallScope): List<FirewallRule> = FirewallRule.parse(get(scope.rulesPath) as JSONArray)
+
+    fun addFirewallRule(scope: FirewallScope, form: FirewallRuleForm) {
+        post(scope.rulesPath, form.createParams())
+    }
+
+    fun updateFirewallRule(scope: FirewallScope, pos: Int, params: Map<String, String>) {
+        if (params.isNotEmpty()) put("${scope.rulesPath}/$pos", params)
+    }
+
+    /** Moves a rule to [to]; the rules in between shift by one, as with drag and drop in the web UI. */
+    fun moveFirewallRule(scope: FirewallScope, pos: Int, to: Int) {
+        put("${scope.rulesPath}/$pos", mapOf("moveto" to to.toString()))
+    }
+
+    fun deleteFirewallRule(scope: FirewallScope, pos: Int) {
+        delete("${scope.rulesPath}/$pos")
+    }
+
+    fun firewallOptions(scope: FirewallScope): Map<String, String> = FirewallNames.options(get("${scope.path}/options") as JSONObject)
+
+    fun setFirewallOptions(scope: FirewallScope, params: Map<String, String>) {
+        put("${scope.path}/options", params)
+    }
+
+    fun firewallAliases(scope: FirewallScope): List<FirewallAlias> = FirewallAlias.parse(get("${scope.path}/aliases") as JSONArray)
+
+    fun addFirewallAlias(scope: FirewallScope, alias: FirewallAlias) {
+        post("${scope.path}/aliases", aliasParams(alias) + ("name" to alias.name))
+    }
+
+    fun updateFirewallAlias(scope: FirewallScope, alias: FirewallAlias) {
+        put("${scope.path}/aliases/${enc(alias.name)}", aliasParams(alias))
+    }
+
+    fun deleteFirewallAlias(scope: FirewallScope, name: String) {
+        delete("${scope.path}/aliases/${enc(name)}")
+    }
+
+    private fun aliasParams(alias: FirewallAlias): Map<String, String> =
+        linkedMapOf("cidr" to alias.cidr.trim()).apply { if (alias.comment.isNotBlank()) put("comment", alias.comment.trim()) }
+
+    fun ipSets(scope: FirewallScope): List<IpSet> = IpSet.parse(get("${scope.path}/ipset") as JSONArray)
+
+    fun addIpSet(scope: FirewallScope, name: String, comment: String) {
+        post("${scope.path}/ipset", linkedMapOf("name" to name).apply { if (comment.isNotBlank()) put("comment", comment.trim()) })
+    }
+
+    fun deleteIpSet(scope: FirewallScope, name: String) {
+        delete("${scope.path}/ipset/${enc(name)}")
+    }
+
+    fun ipSetEntries(scope: FirewallScope, name: String): List<IpSetEntry> =
+        IpSetEntry.parse(get("${scope.path}/ipset/${enc(name)}") as JSONArray)
+
+    fun addIpSetEntry(scope: FirewallScope, name: String, entry: IpSetEntry) {
+        val p = linkedMapOf("cidr" to entry.cidr.trim())
+        if (entry.nomatch) p["nomatch"] = "1"
+        if (entry.comment.isNotBlank()) p["comment"] = entry.comment.trim()
+        post("${scope.path}/ipset/${enc(name)}", p)
+    }
+
+    fun deleteIpSetEntry(scope: FirewallScope, name: String, cidr: String) {
+        delete("${scope.path}/ipset/${enc(name)}/${enc(cidr)}")
+    }
+
+    fun securityGroups(): List<SecurityGroup> = SecurityGroup.parse(get("/cluster/firewall/groups") as JSONArray)
+
+    fun addSecurityGroup(name: String, comment: String) {
+        post("/cluster/firewall/groups", linkedMapOf("group" to name).apply { if (comment.isNotBlank()) put("comment", comment.trim()) })
+    }
+
+    fun deleteSecurityGroup(name: String) {
+        delete("/cluster/firewall/groups/${enc(name)}")
+    }
+
+    fun firewallMacros(): List<Pair<String, String>> = FirewallNames.macros(get("/cluster/firewall/macros") as JSONArray)
+
+    fun firewallLog(scope: FirewallScope, limit: Int = 500): List<String> =
+        FirewallNames.log(get("${scope.path}/log?limit=$limit") as JSONArray)
+
     /** Guests that no enabled job backs up. */
     fun notBackedUp(): List<UnprotectedGuest> = UnprotectedGuest.parse(get("/cluster/backup-info/not-backed-up") as JSONArray)
 
@@ -433,6 +516,8 @@ class ProxmoxClient(
     fun post(path: String, params: Map<String, String>): Any? = request("POST", path, params)
 
     fun put(path: String, params: Map<String, String>): Any? = request("PUT", path, params)
+
+    fun delete(path: String): Any? = request("DELETE", path, emptyMap())
 
     private fun request(method: String, path: String, params: Map<String, String>): Any? {
         if (credentials is ProxmoxCredentials.Password && ticket == null) login()

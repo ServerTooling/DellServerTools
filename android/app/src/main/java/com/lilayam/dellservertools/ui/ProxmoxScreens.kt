@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
+import com.lilayam.dellservertools.core.proxmox.FirewallScope
 import com.lilayam.dellservertools.core.proxmox.Format
 import com.lilayam.dellservertools.core.proxmox.StorageVolume
 import com.lilayam.dellservertools.core.proxmox.GuestEdit
@@ -233,6 +234,10 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
                             onClick = { vms.servers.navigate(Screen.BackupJobs(profile.id)) },
                             modifier = Modifier.testTag("open-backup-jobs"),
                         ) { Text("Backup jobs") }
+                        OutlinedButton(
+                            onClick = { vms.servers.navigate(Screen.Firewall(profile.id, FirewallScope())) },
+                            modifier = Modifier.testTag("open-firewall"),
+                        ) { Text("Firewall") }
                     }
                 }
                 item {
@@ -608,6 +613,10 @@ fun NodeScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
                         onClick = { vms.servers.navigate(Screen.Restore(profile.id, node)) },
                         modifier = Modifier.testTag("node-restore"),
                     ) { Text("Restore backup") }
+                    FilledTonalButton(
+                        onClick = { vms.servers.navigate(Screen.Firewall(profile.id, FirewallScope(node = node))) },
+                        modifier = Modifier.testTag("node-firewall"),
+                    ) { Text("Firewall") }
                     OutlinedButton(onClick = { confirm = "reboot" to "Reboot node $node" }) { Text("Reboot") }
                     OutlinedButton(onClick = { confirm = "shutdown" to "Shut down node $node" }) {
                         Text("Shut down", color = MaterialTheme.colorScheme.error)
@@ -916,6 +925,12 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                         onClick = { vms.servers.navigate(Screen.Restore(profile.id, screen.node, screen.vmid)) },
                         modifier = Modifier.testTag("guest-restore"),
                     ) { Text("Restore") }
+                    OutlinedButton(
+                        onClick = {
+                            vms.servers.navigate(Screen.Firewall(profile.id, FirewallScope(screen.node, screen.type, screen.vmid)))
+                        },
+                        modifier = Modifier.testTag("guest-firewall"),
+                    ) { Text("Firewall") }
                 }
             }
             if (profile.usesApiToken) {
