@@ -35,7 +35,9 @@ class VmHardwareE2ETest : ProxmoxE2ETestBase() {
         try {
             waitUntil { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
         } catch (e: ComposeTimeoutException) {
-            throw AssertionError("No $tag in:\n" + compose.onAllNodes(isRoot()).printToString(), e)
+            val roots = compose.onAllNodes(isRoot())
+            val trees = (0 until roots.fetchSemanticsNodes().size).joinToString("\n") { roots[it].printToString() }
+            throw AssertionError("No $tag. Last calls: ${pve.calls.takeLast(4)}\n$trees", e)
         }
     }
 
