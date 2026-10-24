@@ -23,7 +23,9 @@ class FirewallE2ETest : ProxmoxE2ETestBase() {
 
     // Buttons are disabled while a change runs, and a tap on a disabled one is silently dropped. The click goes
     // through semantics because the previous change's snackbar can cover the button and swallow a real touch.
+    // A lazy list composes only what is on screen, so the list is scrolled to the button first.
     private fun tapEnabled(tag: String) {
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag(tag))
         waitUntil { compose.onAllNodes(hasTestTag(tag) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag(tag).performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
     }
