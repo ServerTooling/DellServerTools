@@ -47,6 +47,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -73,7 +74,9 @@ import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.Format
 import com.lilayam.dellservertools.core.proxmox.StorageVolume
+import com.lilayam.dellservertools.core.proxmox.GuestEdit
 import com.lilayam.dellservertools.core.proxmox.GuestNetwork
+import com.lilayam.dellservertools.core.proxmox.MoveDiskRequest
 import com.lilayam.dellservertools.core.proxmox.GuestShell
 import com.lilayam.dellservertools.core.proxmox.GuestType
 import com.lilayam.dellservertools.core.proxmox.PhysicalDisk
@@ -511,11 +514,28 @@ fun StorageScreen(screen: Screen.Storage, vms: AppViewModels) {
 }
 
 @Composable
-internal fun BusyBar(busy: String?) {
+internal fun BusyBar(busy: String?, onStop: (() -> Unit)? = null) {
     if (busy == null) return
+    var confirmStop by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth()) {
         LinearProgressIndicator(Modifier.fillMaxWidth())
-        Text("$busy…", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp)) {
+            Text("$busy…", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f).padding(vertical = 4.dp))
+            if (onStop != null) {
+                TextButton(onClick = { confirmStop = true }, modifier = Modifier.testTag("busy-stop")) {
+                    Text("Stop", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+    if (confirmStop && onStop != null) {
+        ConfirmDialog(
+            title = "Stop \"$busy\"?",
+            text = "The server aborts the task. What it already did (e.g. part of a copied disk) may stay behind.",
+            confirmLabel = "Stop task",
+            onConfirm = onStop,
+            onDismiss = { confirmStop = false },
+        )
     }
 }
 
@@ -724,9 +744,13 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
     var backupDialog by remember { mutableStateOf(false) }
     var snapshotConfirm by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showDelete by remember { mutableStateOf(false) }
+    var moveDisk by remember { mutableStateOf(false) }
+    var convertTemplate by remember { mutableStateOf(false) }
+    val config = detail?.config.orEmpty().toMap()
+    val isTemplate = config["template"] == "1"
 
     val actions = buildList {
-        if (status == null) return@buildList
+        if (status == null || isTemplate) return@buildList
         if (!status.isRunning) {
             add(GuestAction("start", "Start", null))
         } else {
@@ -735,7 +759,10 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
             } else {
                 add(GuestAction("shutdown", "Shut down", "Ask the guest OS to shut down cleanly."))
                 add(GuestAction("reboot", "Reboot", "Ask the guest OS to reboot."))
-                if (screen.type == GuestType.QEMU) add(GuestAction("suspend", "Pause", "Freeze the VM in memory."))
+                if (screen.type == GuestType.QEMU) {
+                    add(GuestAction("suspend", "Pause", "Freeze the VM in memory."))
+                    add(GuestAction("hibernate", "Hibernate", "Save the VM's memory to disk and stop it. Start resumes it."))
+                }
             }
             add(GuestAction("stop", "Stop", "Pull the plug immediately. Unsaved data in the guest is lost."))
             if (screen.type == GuestType.QEMU) {
@@ -765,7 +792,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                 }
             },
         )
-        BusyBar(state.busy)
+        BusyBar(state.busy, onStop = state.busyTask?.let { (n, upid) -> { vm.stopTask(n, upid) } })
         LazyColumn(
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -783,6 +810,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                                 Spacer(Modifier.width(8.dp))
                                 Text(shown.replaceFirstChar { it.uppercase() }, fontWeight = FontWeight.SemiBold)
                                 status.lock?.let { Text("  · locked ($it)", style = MaterialTheme.typography.labelSmall) }
+                                if (isTemplate) Text("  · template", style = MaterialTheme.typography.labelSmall)
                             }
                             if (status.isRunning) {
                                 UsageLine("CPU", status.cpu, "${Format.percent(status.cpu)} of ${status.cpus}")
@@ -797,6 +825,21 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                             }
                             if (status.maxDisk > 0) KeyValue("Disk", Format.bytes(status.maxDisk))
                             detail?.let { GuestAddresses(it, vms) }
+                            if (detail?.config?.isNotEmpty() == true) {
+                                // Protection blocks deleting the guest and its disks, as in the web UI's Options tab.
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Protection (can't be deleted)", modifier = Modifier.weight(1f))
+                                    Switch(
+                                        checked = config["protection"] == "1",
+                                        onCheckedChange = { on ->
+                                            val edit = GuestEdit(screen.type, config).with("protection", if (on) "1" else "")
+                                            vm.editGuest(screen.node, screen.type, screen.vmid, edit) {}
+                                        },
+                                        enabled = state.busy == null,
+                                        modifier = Modifier.testTag("guest-protection"),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -833,6 +876,20 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                         enabled = status?.isRunning == true,
                     ) { Text("Console") }
                     OutlinedButton(onClick = { backupDialog = true }, enabled = state.busy == null) { Text("Back up now") }
+                    if (detail?.config?.isNotEmpty() == true && MoveDiskRequest.movable(GuestEdit(screen.type, config)).isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = { moveDisk = true },
+                            enabled = state.busy == null,
+                            modifier = Modifier.testTag("guest-move-disk"),
+                        ) { Text(if (screen.type == GuestType.QEMU) "Move disk" else "Move volume") }
+                    }
+                    if (status != null && !status.isRunning && !isTemplate && detail?.config?.isNotEmpty() == true) {
+                        OutlinedButton(
+                            onClick = { convertTemplate = true },
+                            enabled = state.busy == null,
+                            modifier = Modifier.testTag("guest-template"),
+                        ) { Text("Convert to template") }
+                    }
                     OutlinedButton(
                         onClick = { vms.servers.navigate(Screen.Restore(profile.id, screen.node, screen.vmid)) },
                         modifier = Modifier.testTag("guest-restore"),
@@ -895,7 +952,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                 }
                 item {
                     Text(
-                        "To change hardware or options, use the full web interface (globe icon on the server screen).",
+                        "To change hardware or options, tap Edit (pencil) at the top.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -908,7 +965,13 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
             title = "${action.label} $kind ${screen.vmid}?",
             text = action.confirm.orEmpty(),
             confirmLabel = action.label,
-            onConfirm = { vm.guestAction(screen.node, screen.type, screen.vmid, action.action, "${action.label} $kind ${screen.vmid}") },
+            onConfirm = {
+                if (action.action == "hibernate") {
+                    vm.hibernate(screen.node, screen.vmid)
+                } else {
+                    vm.guestAction(screen.node, screen.type, screen.vmid, action.action, "${action.label} $kind ${screen.vmid}")
+                }
+            },
             onDismiss = { confirm = null },
         )
     }
@@ -933,7 +996,10 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
     }
     if (snapshotDialog) {
         SnapshotDialog(
-            onCreate = { name, description -> vm.createSnapshot(screen.node, screen.type, screen.vmid, name, description) },
+            canSaveRam = screen.type == GuestType.QEMU && status?.isRunning == true,
+            onCreate = { name, description, withRam ->
+                vm.createSnapshot(screen.node, screen.type, screen.vmid, name, description, withRam)
+            },
             onDismiss = { snapshotDialog = false },
         )
     }
@@ -943,6 +1009,21 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
             storages = storages,
             onBackup = { storage -> vm.backup(screen.node, screen.type, screen.vmid, storage) },
             onDismiss = { backupDialog = false },
+        )
+    }
+    if (moveDisk) {
+        MoveDiskDialog(screen.node, screen.type, screen.vmid, config, status?.isRunning == true, vms) { moveDisk = false }
+    }
+    if (convertTemplate) {
+        TypedConfirmDialog(
+            title = "Convert $kind ${screen.vmid} to a template?",
+            text = "A template can't be started or turned back into a normal $kind. Its disks become read-only bases " +
+                "for clones.",
+            expected = screen.vmid.toString(),
+            confirmLabel = "Convert",
+            tag = "template",
+            onConfirm = { vm.convertToTemplate(screen.node, screen.type, screen.vmid) },
+            onDismiss = { convertTemplate = false },
         )
     }
     if (showDelete) {
@@ -1008,40 +1089,6 @@ private fun DeleteGuestDialog(
                 enabled = confirmed,
                 modifier = Modifier.testTag("delete-go"),
             ) { Text("Delete", color = if (confirmed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
-private val snapshotNamePattern = Regex("^[A-Za-z][A-Za-z0-9_-]{0,39}$")
-
-@Composable
-private fun SnapshotDialog(onCreate: (String, String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    val valid = snapshotNamePattern.matches(name)
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Take snapshot") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it.trim() },
-                    label = { Text("Name") },
-                    placeholder = { Text("before_update") },
-                    isError = name.isNotEmpty() && !valid,
-                    supportingText = { Text("Letters, digits, - and _; must start with a letter") },
-                    singleLine = true,
-                )
-                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description") })
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                onCreate(name, description)
-                onDismiss()
-            }, enabled = valid) { Text("Create") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -1143,6 +1190,7 @@ fun TaskLogScreen(screen: Screen.TaskLog, vms: AppViewModels) {
     LaunchedEffect(screen.upid) { vm.loadTaskLog(screen.node, screen.upid) }
     AutoRefresh(state.taskLogRunning, 2_000) { vm.loadTaskLog(screen.node, screen.upid) }
     DisposableEffect(screen.upid) { onDispose { vm.clearTaskLog() } }
+    var confirmStop by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     LaunchedEffect(state.taskLog.size) {
         if (state.taskLog.isNotEmpty()) listState.scrollToItem(state.taskLog.size - 1)
@@ -1157,7 +1205,23 @@ fun TaskLogScreen(screen: Screen.TaskLog, vms: AppViewModels) {
                 }
             },
             navigationIcon = { IconButton(onClick = { vms.servers.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+            actions = {
+                if (state.taskLogRunning) {
+                    TextButton(onClick = { confirmStop = true }, modifier = Modifier.testTag("task-stop")) {
+                        Text("Stop", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
         )
+        if (confirmStop) {
+            ConfirmDialog(
+                title = "Stop this task?",
+                text = "The server aborts the task. What it already did may stay behind.",
+                confirmLabel = "Stop task",
+                onConfirm = { vm.stopTask(screen.node, screen.upid) { vm.loadTaskLog(screen.node, screen.upid) } },
+                onDismiss = { confirmStop = false },
+            )
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),

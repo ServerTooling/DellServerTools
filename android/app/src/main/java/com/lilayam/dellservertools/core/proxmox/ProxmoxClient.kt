@@ -249,6 +249,23 @@ class ProxmoxClient(
     fun guestAction(node: String, type: GuestType, vmid: Int, action: String): String? =
         post("${guestPath(node, type, vmid)}/status/$action", emptyMap()) as? String
 
+    /** Saves a running VM's memory to disk and stops it; the next start resumes it. Returns the task UPID. */
+    fun hibernate(node: String, vmid: Int): String? =
+        post("${guestPath(node, GuestType.QEMU, vmid)}/status/suspend", mapOf("todisk" to "1")) as? String
+
+    /** Moves a disk or volume to another storage. Returns the task UPID. */
+    fun moveDisk(node: String, vmid: Int, request: MoveDiskRequest): String? =
+        post("${guestPath(node, request.type, vmid)}/${request.path}", request.toParams()) as? String
+
+    /** Turns a stopped guest into a template, for linked clones. Can't be undone. */
+    fun convertToTemplate(node: String, type: GuestType, vmid: Int): String? =
+        post("${guestPath(node, type, vmid)}/template", emptyMap()) as? String
+
+    /** Asks a running task to stop. */
+    fun stopTask(node: String, upid: String) {
+        request("DELETE", "/nodes/${enc(node)}/tasks/${enc(upid)}", emptyMap())
+    }
+
     /** Presses [key] (a [VmKeys] name, e.g. "ret") in a running QEMU VM. */
     fun sendKey(node: String, vmid: Int, key: String) {
         put("${guestPath(node, GuestType.QEMU, vmid)}/sendkey", VmKeys.params(key))
@@ -257,9 +274,11 @@ class ProxmoxClient(
     fun snapshots(node: String, type: GuestType, vmid: Int): List<Snapshot> =
         ProxmoxJson.snapshots(get("${guestPath(node, type, vmid)}/snapshot") as JSONArray)
 
-    fun createSnapshot(node: String, type: GuestType, vmid: Int, name: String, description: String): String? {
+    /** [withRam] (running VMs only) also saves the memory, so a rollback resumes the VM where it was. */
+    fun createSnapshot(node: String, type: GuestType, vmid: Int, name: String, description: String, withRam: Boolean = false): String? {
         val params = mutableMapOf("snapname" to name)
         if (description.isNotBlank()) params["description"] = description
+        if (withRam && type == GuestType.QEMU) params["vmstate"] = "1"
         return post("${guestPath(node, type, vmid)}/snapshot", params) as? String
     }
 

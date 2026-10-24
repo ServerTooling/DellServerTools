@@ -12,6 +12,7 @@ import com.lilayam.dellservertools.core.proxmox.GuestEdit
 import com.lilayam.dellservertools.core.proxmox.GuestAddress
 import com.lilayam.dellservertools.core.proxmox.GuestNetwork
 import com.lilayam.dellservertools.core.proxmox.LxcRequest
+import com.lilayam.dellservertools.core.proxmox.MoveDiskRequest
 import com.lilayam.dellservertools.core.proxmox.RestoreRequest
 import com.lilayam.dellservertools.core.proxmox.VmKeys
 import com.lilayam.dellservertools.core.proxmox.VmRequest
@@ -100,6 +101,8 @@ data class ProxmoxUiState(
     val taskLogRunning: Boolean = false,
     /** Label of the action currently running, e.g. "Shutdown VM 100". */
     val busy: String? = null,
+    /** Node and UPID of the task behind [busy], once the server has started it, so it can be stopped. */
+    val busyTask: Pair<String, String>? = null,
     val message: String? = null,
     val createOptions: GuestCreateOptions? = null,
     val backups: BackupList? = null,
@@ -334,10 +337,34 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun createSnapshot(node: String, type: GuestType, vmid: Int, name: String, description: String) =
+    fun createSnapshot(node: String, type: GuestType, vmid: Int, name: String, description: String, withRam: Boolean = false) =
         runTask("Snapshot \"$name\"", node, refreshGuest = Triple(node, type, vmid)) { c ->
-            c.createSnapshot(node, type, vmid, name, description)
+            c.createSnapshot(node, type, vmid, name, description, withRam)
         }
+
+    /** Saves a running VM's memory to disk and stops it; Start resumes it. */
+    fun hibernate(node: String, vmid: Int) =
+        runTask("Hibernate VM $vmid", node, Triple(node, GuestType.QEMU, vmid)) { c -> c.hibernate(node, vmid) }
+
+    fun moveDisk(node: String, vmid: Int, request: MoveDiskRequest) =
+        runTask("Move ${request.disk} of ${request.type.label} $vmid to ${request.storage}", node, Triple(node, request.type, vmid)) { c ->
+            c.moveDisk(node, vmid, request)
+        }
+
+    fun convertToTemplate(node: String, type: GuestType, vmid: Int) =
+        runTask("Convert ${type.label} $vmid to a template", node, Triple(node, type, vmid)) { c ->
+            c.convertToTemplate(node, type, vmid)
+        }
+
+    /** Asks the server to stop a task; the one [busy] follows then ends with its error status. */
+    fun stopTask(node: String, upid: String, onDone: () -> Unit = {}) {
+        val c = client ?: return
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { c.stopTask(node, upid) } }
+            result.onFailure { e -> _state.update { it.copy(message = "Stop task failed: ${describe(e)}") } }
+            onDone()
+        }
+    }
 
     fun rollbackSnapshot(node: String, type: GuestType, vmid: Int, name: String) =
         runTask("Roll back to \"$name\"", node, refreshGuest = Triple(node, type, vmid)) { c ->
@@ -566,6 +593,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
                 runCatching {
                     val upid = start(c)
                     if (upid.isNullOrBlank() || !upid.startsWith("UPID:")) return@runCatching "done"
+                    withContext(Dispatchers.Main) { _state.update { it.copy(busyTask = node to upid) } }
                     val deadline = System.currentTimeMillis() + TASK_WAIT_MS
                     while (System.currentTimeMillis() < deadline) {
                         val status = c.taskStatus(node, upid)
@@ -581,7 +609,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
                 { exit -> if (exit == "OK" || exit == "done") "$label: done" else "$label: $exit" },
                 { e -> "$label failed: ${describe(e)}" },
             )
-            _state.update { it.copy(busy = null, message = message) }
+            _state.update { it.copy(busy = null, busyTask = null, message = message) }
             refreshResources()
             refreshGuest?.let { (n, t, id) -> loadGuest(n, t, id) }
             val succeeded = outcome.getOrNull()?.let { it == "OK" || it == "done" } == true

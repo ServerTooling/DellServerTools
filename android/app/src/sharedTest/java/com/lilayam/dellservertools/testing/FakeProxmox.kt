@@ -48,6 +48,18 @@ class FakeProxmox : AutoCloseable {
     @Volatile
     var cloned: Pair<String, Int>? = null  // (type, source vmid)
 
+    /** Whether tasks report "running" until someone stops them with DELETE. */
+    @Volatile
+    var taskRunning = false
+
+    /** Adds a second storage for disks and containers, as a target for moving disks. */
+    @Volatile
+    var extraImageStorage = false
+
+    /** Whether VM 100 has been converted to a template. */
+    @Volatile
+    var vmTemplate = false
+
     /** Keys pressed in VM 100 through the sendkey API, in order. */
     val sentKeys = CopyOnWriteArrayList<String>()
 
@@ -197,6 +209,7 @@ class FakeProxmox : AutoCloseable {
                 """[
                   {"storage":"local","type":"dir","content":"iso,backup,vztmpl","used":10,"total":100,"active":1},
                   {"storage":"local-zfs","type":"zfspool","content":"rootdir,images","used":104,"total":207,"active":1}
+                  ${if (extraImageStorage) EXTRA_STORAGE else ""}
                 ]""",
             )
             path.startsWith("/nodes/pve/storage/local/content") && path.contains("content=vztmpl") ->
@@ -284,7 +297,8 @@ class FakeProxmox : AutoCloseable {
             )
             path == "/nodes/pve/qemu/100/config" -> json(
                 """{"name":"web-01","memory":2048,"cores":2,"boot":"order=scsi0;net0","scsi0":"local-zfs:vm-100-disk-0,size=32G",
-                    "ide2":"local:iso/installer.iso,media=cdrom","net0":"virtio=BC:24:11:00:00:02,bridge=vmbr0","digest":"abc"}""",
+                    "ide2":"local:iso/installer.iso,media=cdrom","net0":"virtio=BC:24:11:00:00:02,bridge=vmbr0",
+                    ${if (vmTemplate) "\"template\":1," else ""}"digest":"abc"}""",
             )
             path == "/nodes/pve/lxc/200/status/current" -> json(
                 """{"status":"running","name":"gh-runner-1","cpus":4,"maxmem":2147483648,"mem":20971520,"uptime":120}""",
@@ -306,7 +320,8 @@ class FakeProxmox : AutoCloseable {
             path == "/nodes/pve/lxc/200/snapshot" && request.method == "GET" -> json("[]")
             path == "/nodes/pve/qemu/100/snapshot" && request.method == "GET" ->
                 json("""[{"name":"current","running":0},{"name":"clean","snaptime":1700000000,"description":"fresh install"}]""")
-            path == "/nodes/pve/qemu/100/snapshot" && request.method == "POST" -> json("\"UPID:pve:00000002:snapshot:100:root@pam:\"")
+            path.matches(Regex("/nodes/pve/(qemu|lxc)/\\d+/snapshot")) && request.method == "POST" ->
+                json("\"UPID:pve:00000002:snapshot:${path.split('/')[4]}:root@pam:\"")
             path.startsWith("/nodes/pve/qemu/100/snapshot/clean") && request.method == "DELETE" ->
                 json("\"UPID:pve:00000003:delsnapshot:100:root@pam:\"")
             path == "/nodes/pve/qemu/100/status/start" && request.method == "POST" -> {
@@ -325,7 +340,22 @@ class FakeProxmox : AutoCloseable {
                 vmRunning.set(false)
                 json("\"UPID:pve:00000004:qmstop:100:root@pam:\"")
             }
-            path.startsWith("/nodes/pve/tasks/") && path.contains("/status") -> json("""{"status":"stopped","exitstatus":"OK"}""")
+            path.startsWith("/nodes/pve/tasks/") && request.method == "DELETE" -> {
+                taskRunning = false
+                json("null")
+            }
+            path.startsWith("/nodes/pve/tasks/") && path.contains("/status") ->
+                if (taskRunning) json("""{"status":"running"}""") else json("""{"status":"stopped","exitstatus":"OK"}""")
+            path.matches(Regex("/nodes/pve/(qemu|lxc)/\\d+/(move_disk|move_volume)")) && request.method == "POST" ->
+                json("\"UPID:pve:00000030:${if (path.endsWith("move_disk")) "qmmove" else "move_volume"}:${path.split('/')[4]}:root@pam:\"")
+            path.matches(Regex("/nodes/pve/(qemu|lxc)/\\d+/template")) && request.method == "POST" -> {
+                if (path == "/nodes/pve/qemu/100/template") vmTemplate = true
+                json("\"UPID:pve:00000031:qmtemplate:${path.split('/')[4]}:root@pam:\"")
+            }
+            path == "/nodes/pve/qemu/100/status/suspend" && request.method == "POST" -> {
+                vmRunning.set(false)
+                json("\"UPID:pve:00000032:qmsuspend:100:root@pam:\"")
+            }
             path.startsWith("/nodes/pve/tasks/") && path.contains("/log") -> json("""[{"n":1,"t":"starting"},{"n":2,"t":"TASK OK"}]""")
             path == "/cluster/tasks" -> json(
                 """[{"upid":"UPID:pve:00000001:qmstart:100:root@pam:","node":"pve","type":"qmstart","id":"100","user":"root@pam","starttime":1700000000,"endtime":1700000001,"status":"OK"}]""",
@@ -335,6 +365,7 @@ class FakeProxmox : AutoCloseable {
     }
 
     private companion object {
+        const val EXTRA_STORAGE = """,{"storage":"fast","type":"lvmthin","content":"rootdir,images","used":1,"total":500,"active":1}"""
         const val ISO = """{"volid":"local:iso/debian-12.7.0-amd64-netinst.iso","content":"iso","format":"iso","size":660000000}"""
 
         /** Newest first per guest; one VM and one container backup on `local`. */
