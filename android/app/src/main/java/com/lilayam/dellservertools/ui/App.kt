@@ -98,6 +98,7 @@ fun DellServerToolsApp(vms: AppViewModels, onExit: () -> Unit) {
                     is Screen.Prune -> WithProfile(vms, screen.profileId) { PruneScreen(screen, vms) }
                     is Screen.BackupJobs -> WithProfile(vms, screen.profileId) { BackupJobsScreen(screen, vms) }
                     is Screen.Firewall -> WithProfile(vms, screen.profileId) { FirewallScreen(screen, vms) }
+                    is Screen.NodeSystem -> WithProfile(vms, screen.profileId) { NodeSystemScreen(it, screen, vms) }
                     is Screen.BackupJobEdit -> WithProfile(vms, screen.profileId) { BackupJobFormScreen(screen, vms) }
                     is Screen.CreateCt -> WithProfile(vms, screen.profileId) { CreateCtScreen(it, screen.node, vms) }
                     is Screen.CreateVm -> WithProfile(vms, screen.profileId) { CreateVmScreen(it, screen.node, vms) }

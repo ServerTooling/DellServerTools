@@ -87,6 +87,30 @@ class FakeProxmox : AutoCloseable {
     val ipSets = java.util.concurrent.ConcurrentHashMap(mapOf("admins" to mutableListOf("192.0.2.10")))
     val securityGroups = CopyOnWriteArrayList(listOf("webserver"))
 
+    /** The node's interfaces by name, as `GET /nodes/pve/network` lists them; writes change it at once. */
+    val network = java.util.concurrent.ConcurrentHashMap<String, Map<String, String>>(
+        mapOf(
+            "eno1" to mapOf("type" to "eth", "active" to "1", "autostart" to "1"),
+            "vmbr0" to mapOf("type" to "bridge", "active" to "1", "autostart" to "1", "cidr" to "192.0.2.5/24", "gateway" to "192.0.2.1", "bridge_ports" to "eno1"),
+            "vmbr1" to mapOf("type" to "bridge", "active" to "1", "autostart" to "1"),
+        ),
+    )
+
+    @Volatile
+    var networkApplied = false
+
+    @Volatile
+    var dnsSearch = "example.org"
+
+    @Volatile
+    var hostsFile = "127.0.0.1 localhost\n192.0.2.5 pve.example.org pve\n"
+
+    @Volatile
+    var timezone = "Europe/Berlin"
+
+    /** Standard repositories added through the API, by handle. */
+    val addedRepos = CopyOnWriteArrayList<String>()
+
     /** Keys pressed in VM 100 through the sendkey API, in order. */
     val sentKeys = CopyOnWriteArrayList<String>()
 
@@ -298,7 +322,8 @@ class FakeProxmox : AutoCloseable {
             }
             path == "/cluster/backup-info/not-backed-up" -> json("""[{"vmid":200,"name":"gh-runner-1","type":"lxc"}]""")
             path == "/nodes/pve/vzdump" && request.method == "POST" -> json("\"UPID:pve:00000040:vzdump::root@pam:\"")
-            path.startsWith("/nodes/pve/network") -> json("""[{"iface":"vmbr0","type":"bridge"},{"iface":"vmbr1","type":"bridge"}]""")
+            path.startsWith("/nodes/pve/") && NODE_SYSTEM.any { path.substringBefore('?').startsWith("/nodes/pve/$it") } ->
+                nodeSystem(request, path)
             path == "/nodes/pve/aplinfo" && request.method == "GET" ->
                 json("""[{"template":"system/debian-12-standard_12.7-1_amd64.tar.zst","os":"debian-12","section":"system","description":"Debian 12"},{"template":"system/alpine-3.20-default_20240908_amd64.tar.xz","os":"alpine","section":"system","description":"Alpine"}]""")
             path == "/nodes/pve/aplinfo" && request.method == "POST" -> json("\"UPID:pve:00000010:download:local:root@pam:\"")
@@ -404,6 +429,80 @@ class FakeProxmox : AutoCloseable {
                 """[{"upid":"UPID:pve:00000001:qmstart:100:root@pam:","node":"pve","type":"qmstart","id":"100","user":"root@pam","starttime":1700000000,"endtime":1700000001,"status":"OK"}]""",
             )
             else -> error(501, "Method '$path' not implemented in FakeProxmox")
+        }
+    }
+
+    private fun nodeSystem(request: RecordedRequest, fullPath: String): MockResponse {
+        val method = request.method.orEmpty()
+        val path = fullPath.substringBefore('?')
+        return when {
+            path == "/nodes/pve/network" && method == "GET" -> {
+                val bridgesOnly = fullPath.contains("type=bridge")
+                json(
+                    network.entries.filter { !bridgesOnly || it.value["type"] == "bridge" }.sortedBy { it.key }
+                        .joinToString(",", "[", "]") { (name, v) -> org.json.JSONObject(v + ("iface" to name)).toString() },
+                )
+            }
+            path == "/nodes/pve/network" && method == "POST" -> {
+                val p = form(request)
+                network[p.getValue("iface")] = p - "iface"
+                json("null")
+            }
+            path == "/nodes/pve/network" && method == "PUT" -> {
+                networkApplied = true
+                json("\"UPID:pve:00000050:srvreload:networking:root@pam:\"")
+            }
+            path == "/nodes/pve/network" && method == "DELETE" -> json("null")
+            path.startsWith("/nodes/pve/network/") && method == "PUT" -> {
+                val name = path.substringAfterLast('/')
+                val p = form(request)
+                val gone = p["delete"].orEmpty().split(',').toSet()
+                network[name] = (network[name].orEmpty() + p - "delete").filterKeys { it !in gone }
+                json("null")
+            }
+            path.startsWith("/nodes/pve/network/") && method == "DELETE" -> {
+                network.remove(path.substringAfterLast('/'))
+                json("null")
+            }
+            path == "/nodes/pve/dns" && method == "GET" -> json("""{"search":"$dnsSearch","dns1":"192.0.2.1"}""")
+            path == "/nodes/pve/dns" && method == "PUT" -> {
+                dnsSearch = form(request).getValue("search")
+                json("null")
+            }
+            path == "/nodes/pve/hosts" && method == "GET" ->
+                json(org.json.JSONObject(mapOf("data" to hostsFile, "digest" to "d1")).toString())
+            path == "/nodes/pve/hosts" && method == "POST" -> {
+                hostsFile = form(request).getValue("data")
+                json("null")
+            }
+            path == "/nodes/pve/time" && method == "GET" -> json("""{"timezone":"$timezone","time":1792000000}""")
+            path == "/nodes/pve/time" && method == "PUT" -> {
+                timezone = form(request).getValue("timezone")
+                json("null")
+            }
+            path == "/nodes/pve/services" -> json(
+                """[{"service":"pveproxy","name":"pveproxy","desc":"PVE API Proxy Server","state":"running","unit-state":"enabled"},
+                    {"service":"postfix","name":"postfix","desc":"Postfix Mail Transport Agent","state":"dead","unit-state":"enabled"}]""",
+            )
+            path.startsWith("/nodes/pve/services/") && method == "POST" -> json("\"UPID:pve:00000051:srvstart:postfix:root@pam:\"")
+            path == "/nodes/pve/apt/update" && method == "GET" -> json(
+                """[{"Package":"pve-manager","OldVersion":"8.2.4","Version":"8.2.7","Title":"Proxmox VE manager"}]""",
+            )
+            path == "/nodes/pve/apt/update" && method == "POST" -> json("\"UPID:pve:00000052:aptupdate::root@pam:\"")
+            path == "/nodes/pve/apt/repositories" && method == "GET" -> json(
+                """{"digest":"abc","files":[{"path":"/etc/apt/sources.list","repositories":[
+                    {"Types":["deb"],"URIs":["http://deb.debian.org/debian"],"Suites":["bookworm"],"Components":["main","contrib"],"Enabled":1},
+                    {"Types":["deb"],"URIs":["https://enterprise.proxmox.com/debian/pve"],"Suites":["bookworm"],"Components":["pve-enterprise"],"Enabled":1}]}],
+                   "standard-repos":[{"handle":"enterprise","name":"Enterprise","status":1},
+                    {"handle":"no-subscription","name":"No-Subscription","status":${if ("no-subscription" in addedRepos) 1 else "null"}}]}""",
+            )
+            path == "/nodes/pve/apt/repositories" && method == "PUT" -> {
+                addedRepos += form(request).getValue("handle")
+                json("null")
+            }
+            path == "/nodes/pve/apt/repositories" && method == "POST" -> json("null")
+            path == "/nodes/pve/journal" -> json("""["Oct 24 10:00:00 pve systemd[1]: Started pveproxy.service.","Oct 24 10:00:01 pve pvedaemon[1234]: worker started"]""")
+            else -> error(501, "node $method $path")
         }
     }
 
@@ -517,6 +616,7 @@ class FakeProxmox : AutoCloseable {
     }
 
     private companion object {
+        val NODE_SYSTEM = listOf("network", "dns", "hosts", "time", "services", "apt/", "journal")
         const val EXTRA_STORAGE = """,{"storage":"fast","type":"lvmthin","content":"rootdir,images","used":1,"total":500,"active":1}"""
         const val ISO = """{"volid":"local:iso/debian-12.7.0-amd64-netinst.iso","content":"iso","format":"iso","size":660000000}"""
 

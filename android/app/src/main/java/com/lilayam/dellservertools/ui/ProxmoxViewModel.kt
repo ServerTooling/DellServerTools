@@ -435,6 +435,10 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** An action that starts a server task (its UPID), followed in the busy bar; [onDone] runs on success. */
+    fun task(label: String, node: String, onDone: () -> Unit = {}, start: (ProxmoxClient) -> String?) =
+        runTask(label, node, refreshGuest = null, afterDone = onDone, start = start)
+
     /** A configuration change that takes effect at once (no task), shown in the busy bar; [onDone] runs on success. */
     fun change(label: String, onDone: () -> Unit = {}, block: (ProxmoxClient) -> Unit) =
         runTask(label, "", refreshGuest = null, afterDone = onDone) { c ->

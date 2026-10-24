@@ -238,6 +238,79 @@ class ProxmoxClient(
     /** Runs a job's backup now on [node], as the web UI's Run now does. Returns the task UPID. */
     fun runBackupJob(node: String, form: BackupJobForm): String? = post("/nodes/${enc(node)}/vzdump", form.runParams()) as? String
 
+    // ---- node system: network, DNS, hosts, time, services, updates, repositories, journal
+
+    fun networkInterfaces(node: String): List<NetworkInterface> = NetworkInterface.parse(get("/nodes/${enc(node)}/network") as JSONArray)
+
+    fun createNetwork(node: String, form: NetworkForm) {
+        post("/nodes/${enc(node)}/network", form.createParams())
+    }
+
+    fun updateNetwork(node: String, form: NetworkForm) {
+        put("/nodes/${enc(node)}/network/${enc(form.iface)}", form.updateParams())
+    }
+
+    fun deleteNetwork(node: String, iface: String) {
+        delete("/nodes/${enc(node)}/network/${enc(iface)}")
+    }
+
+    /** Applies the pending `/etc/network/interfaces.new` with ifreload. Returns the task UPID. */
+    fun applyNetwork(node: String): String? = put("/nodes/${enc(node)}/network", emptyMap()) as? String
+
+    /** Throws away the pending network changes. */
+    fun revertNetwork(node: String) {
+        delete("/nodes/${enc(node)}/network")
+    }
+
+    fun dns(node: String): DnsSettings = DnsSettings.parse(get("/nodes/${enc(node)}/dns") as JSONObject)
+
+    fun setDns(node: String, dns: DnsSettings) {
+        put("/nodes/${enc(node)}/dns", dns.params())
+    }
+
+    /** `/etc/hosts` and its digest, which the save sends back so a concurrent edit isn't overwritten. */
+    fun hosts(node: String): Pair<String, String> =
+        (get("/nodes/${enc(node)}/hosts") as JSONObject).let { it.optString("data") to it.optString("digest") }
+
+    fun setHosts(node: String, data: String, digest: String) {
+        post("/nodes/${enc(node)}/hosts", linkedMapOf("data" to data).apply { if (digest.isNotEmpty()) put("digest", digest) })
+    }
+
+    fun timezone(node: String): String = (get("/nodes/${enc(node)}/time") as JSONObject).optString("timezone")
+
+    fun setTimezone(node: String, timezone: String) {
+        put("/nodes/${enc(node)}/time", mapOf("timezone" to timezone))
+    }
+
+    fun services(node: String): List<NodeService> = NodeService.parse(get("/nodes/${enc(node)}/services") as JSONArray)
+
+    /** [action] is start, stop, restart or reload. Returns the task UPID. */
+    fun serviceAction(node: String, service: String, action: String): String? {
+        require(action in setOf("start", "stop", "restart", "reload")) { "Unknown service action $action" }
+        return post("/nodes/${enc(node)}/services/${enc(service)}/$action", emptyMap()) as? String
+    }
+
+    fun pendingUpdates(node: String): List<PackageUpdate> = PackageUpdate.parse(get("/nodes/${enc(node)}/apt/update") as JSONArray)
+
+    /** `apt-get update`. Returns the task UPID. */
+    fun refreshUpdates(node: String): String? = post("/nodes/${enc(node)}/apt/update", emptyMap()) as? String
+
+    fun aptRepositories(node: String): AptRepositories = AptRepositories.parse(get("/nodes/${enc(node)}/apt/repositories") as JSONObject)
+
+    fun setAptRepositoryEnabled(node: String, repo: AptRepository, enabled: Boolean, digest: String) {
+        val p = linkedMapOf("path" to repo.path, "index" to repo.index.toString(), "enabled" to if (enabled) "1" else "0")
+        if (digest.isNotEmpty()) p["digest"] = digest
+        post("/nodes/${enc(node)}/apt/repositories", p)
+    }
+
+    /** Adds a standard repository (e.g. `no-subscription`) by its handle. */
+    fun addStandardRepository(node: String, handle: String, digest: String) {
+        put("/nodes/${enc(node)}/apt/repositories", linkedMapOf("handle" to handle).apply { if (digest.isNotEmpty()) put("digest", digest) })
+    }
+
+    fun journal(node: String, lines: Int = 500): List<String> =
+        NodeSystemJson.journal(get("/nodes/${enc(node)}/journal?lastentries=$lines") as JSONArray)
+
     // ---- firewall (datacenter, node, guest and security groups)
 
     fun firewallRules(scope: FirewallScope): List<FirewallRule> = FirewallRule.parse(get(scope.rulesPath) as JSONArray)

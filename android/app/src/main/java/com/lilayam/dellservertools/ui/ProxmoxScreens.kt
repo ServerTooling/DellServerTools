@@ -87,9 +87,9 @@ import java.util.Date
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val Green = Color(0xFF2E7D32)
-private val Amber = Color(0xFFF9A825)
-private val Red = Color(0xFFC62828)
+internal val Green = Color(0xFF2E7D32)
+internal val Amber = Color(0xFFF9A825)
+internal val Red = Color(0xFFC62828)
 private val Grey = Color(0xFF9E9E9E)
 
 private fun statusColor(status: String): Color = when (status) {
@@ -617,6 +617,10 @@ fun NodeScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
                         onClick = { vms.servers.navigate(Screen.Firewall(profile.id, FirewallScope(node = node))) },
                         modifier = Modifier.testTag("node-firewall"),
                     ) { Text("Firewall") }
+                    FilledTonalButton(
+                        onClick = { vms.servers.navigate(Screen.NodeSystem(profile.id, node)) },
+                        modifier = Modifier.testTag("node-system"),
+                    ) { Text("System") }
                     OutlinedButton(onClick = { confirm = "reboot" to "Reboot node $node" }) { Text("Reboot") }
                     OutlinedButton(onClick = { confirm = "shutdown" to "Shut down node $node" }) {
                         Text("Shut down", color = MaterialTheme.colorScheme.error)
