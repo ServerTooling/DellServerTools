@@ -35,6 +35,8 @@ sealed interface Screen {
     data class Restore(val profileId: String, val node: String, val vmid: Int? = null, val volid: String? = null) : Screen
     data class Guest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
     data class Tasks(val profileId: String) : Screen
+    data class BackupJobs(val profileId: String) : Screen
+    data class BackupJobEdit(val profileId: String, val id: String?) : Screen
     data class Runners(val profileId: String) : Screen
     data class TaskLog(val profileId: String, val node: String, val upid: String, val title: String) : Screen
     /** [consoleVm] is set for a QEMU VM's console, which then offers keys sent through the API. */

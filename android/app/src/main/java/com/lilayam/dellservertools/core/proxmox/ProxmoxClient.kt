@@ -218,6 +218,29 @@ class ProxmoxClient(
         request("DELETE", "/storage/${enc(storage)}", emptyMap())
     }
 
+    // ---- backup jobs (Datacenter > Backup)
+
+    fun backupJobs(): List<BackupJob> = BackupJob.parse(get("/cluster/backup") as JSONArray)
+
+    fun createBackupJob(form: BackupJobForm) {
+        post("/cluster/backup", form.createParams())
+    }
+
+    fun updateBackupJob(form: BackupJobForm) {
+        val params = form.updateParams()
+        if (params.isNotEmpty()) request("PUT", "/cluster/backup/${enc(form.id)}", params)
+    }
+
+    fun deleteBackupJob(id: String) {
+        request("DELETE", "/cluster/backup/${enc(id)}", emptyMap())
+    }
+
+    /** Runs a job's backup now on [node], as the web UI's Run now does. Returns the task UPID. */
+    fun runBackupJob(node: String, form: BackupJobForm): String? = post("/nodes/${enc(node)}/vzdump", form.runParams()) as? String
+
+    /** Guests that no enabled job backs up. */
+    fun notBackedUp(): List<UnprotectedGuest> = UnprotectedGuest.parse(get("/cluster/backup-info/not-backed-up") as JSONArray)
+
     /** ZFS pools, LVM volume groups and thin pools on the node, and NFS exports of a server, for the add form. */
     fun scanZfs(node: String): List<String> = scan(node, "zfs", emptyMap(), "pool")
 
