@@ -2,6 +2,7 @@ package com.lilayam.dellservertools.e2e
 
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -15,6 +16,12 @@ import org.junit.runner.RunWith
 class FirewallE2ETest : ProxmoxE2ETestBase() {
 
     private fun waitFor(tag: String) = waitUntil { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
+
+    // Buttons are disabled while a change runs, and a tap on a disabled one is silently dropped.
+    private fun tapEnabled(tag: String) {
+        waitUntil { compose.onAllNodes(hasTestTag(tag) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        tap(tag)
+    }
 
     private fun openDatacenterFirewall() {
         addServerAndConnect()
@@ -34,10 +41,10 @@ class FirewallE2ETest : ProxmoxE2ETestBase() {
         tap("fw-rule-enable-1")
         waitUntil { dcRules[1]["enable"] == "1" }
 
-        tap("fw-rule-up-1")
+        tapEnabled("fw-rule-up-1")
         waitUntil { dcRules[0]["macro"] == "Ping" }
 
-        tap("fw-rule-add")
+        tapEnabled("fw-rule-add")
         tap("fw-proto-tcp")
         type("fw-dport", "443")
         tap("fw-rule-save")
@@ -50,7 +57,7 @@ class FirewallE2ETest : ProxmoxE2ETestBase() {
 
         tap("fw-tab-options")
         waitFor("fw-opt-enable")
-        tap("fw-opt-enable")
+        tapEnabled("fw-opt-enable")
         waitUntil { pve.firewallOptions["/cluster/firewall"]?.get("enable") == "1" }
     }
 
