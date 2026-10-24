@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -24,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -46,7 +49,7 @@ import com.lilayam.dellservertools.core.proxmox.GuestType
 /** Keys with their own field in the typed sections, so "All settings" doesn't list them twice. */
 private val TYPED_KEYS = setOf(
     "hostname", "name", "cores", "memory", "swap", "sockets", "description", "onboot", "protection", "tags",
-    "cpulimit", "cpuunits", "nameserver", "searchdomain",
+    "cpulimit", "cpuunits", "nameserver", "searchdomain", "boot",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,6 +77,7 @@ fun EditGuestScreen(profile: ServerProfile, screen: Screen.EditGuest, vms: AppVi
     var growing by remember { mutableStateOf<String?>(null) }
     var addingDisk by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf<String?>(null) }
+    var askRestart by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         TopAppBar(
@@ -153,10 +157,11 @@ fun EditGuestScreen(profile: ServerProfile, screen: Screen.EditGuest, vms: AppVi
                 CheckRow("QEMU guest agent", e.agent) { edit = e.withAgent(it) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NumField(e.startup("order"), { edit = e.withStartup("order", it.filter(Char::isDigit).take(4)) }, "Boot order", Modifier.weight(1f))
+                NumField(e.startup("order"), { edit = e.withStartup("order", it.filter(Char::isDigit).take(4)) }, "Start order", Modifier.weight(1f))
                 NumField(e.startup("up"), { edit = e.withStartup("up", it.filter(Char::isDigit).take(5)) }, "Up delay s", Modifier.weight(1f))
                 NumField(e.startup("down"), { edit = e.withStartup("down", it.filter(Char::isDigit).take(5)) }, "Down timeout s", Modifier.weight(1f))
             }
+            if (!isCt) BootOrder(e) { edit = it }
             if (isCt) {
                 Section("DNS")
                 OutlinedTextField(
@@ -228,7 +233,12 @@ fun EditGuestScreen(profile: ServerProfile, screen: Screen.EditGuest, vms: AppVi
             problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
             Button(
-                onClick = { vm.editGuest(screen.node, screen.type, screen.vmid, e) { vms.servers.back() } },
+                onClick = {
+                    val needsRestart = e.bootOrderChanged && detail?.status?.isRunning == true
+                    vm.editGuest(screen.node, screen.type, screen.vmid, e) {
+                        if (needsRestart) askRestart = true else vms.servers.back()
+                    }
+                },
                 enabled = problem == null && state.busy == null,
                 modifier = Modifier.fillMaxWidth().testTag("edit-submit"),
             ) { Text(if (changeCount == 0) "Save changes" else "Save $changeCount change${if (changeCount == 1) "" else "s"}") }
@@ -247,6 +257,22 @@ fun EditGuestScreen(profile: ServerProfile, screen: Screen.EditGuest, vms: AppVi
                 edit = e.with(key, if (isCt) "$storage:$gb,mp=$path" else "$storage:$gb")
                 addingDisk = false
             }
+        }
+        if (askRestart) {
+            ConfirmDialog(
+                title = "Stop and start VM ${screen.vmid} now?",
+                text = "The new boot order is used from the next start. A reboot from inside the VM isn't enough: " +
+                    "Proxmox has to stop it and start it again. Stopping is like pulling the plug.",
+                confirmLabel = "Stop and start now",
+                onConfirm = {
+                    vm.stopAndStart(screen.node, screen.vmid)
+                    vms.servers.back()
+                },
+                onDismiss = {
+                    askRestart = false
+                    vms.servers.back()
+                },
+            )
         }
         confirmRemove?.let { key ->
             val unused = key.startsWith("unused")
@@ -389,4 +415,59 @@ private fun AddDiskDialog(isCt: Boolean, storages: List<String>, onDismiss: () -
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** The VM's boot order with buttons instead of the web interface's drag and drop. */
+@Composable
+private fun BootOrder(e: GuestEdit, onChange: (GuestEdit) -> Unit) {
+    Section("Boot order")
+    val order = e.bootOrder()
+    order.forEachIndexed { i, device ->
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("boot-row-$device")) {
+            Column(Modifier.weight(1f)) {
+                Text("${i + 1}. $device")
+                Note(bootDeviceSummary(e, device))
+            }
+            IconButton(
+                onClick = { onChange(e.moveBootDevice(device, -1)) },
+                enabled = i > 0,
+                modifier = Modifier.testTag("boot-up-$device"),
+            ) { Icon(Icons.Filled.KeyboardArrowUp, "Move $device up") }
+            IconButton(
+                onClick = { onChange(e.moveBootDevice(device, 1)) },
+                enabled = i < order.lastIndex,
+                modifier = Modifier.testTag("boot-down-$device"),
+            ) { Icon(Icons.Filled.KeyboardArrowDown, "Move $device down") }
+            Switch(
+                checked = true,
+                onCheckedChange = { onChange(e.withBootDevice(device, false)) },
+                enabled = order.size > 1,
+                modifier = Modifier.testTag("boot-on-$device"),
+            )
+        }
+    }
+    e.bootDevices().filter { it !in order }.forEach { device ->
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("boot-row-$device")) {
+            Column(Modifier.weight(1f)) {
+                Text(device)
+                Note(bootDeviceSummary(e, device) + " · not used to boot")
+            }
+            Switch(
+                checked = false,
+                onCheckedChange = { onChange(e.withBootDevice(device, true)) },
+                modifier = Modifier.testTag("boot-on-$device"),
+            )
+        }
+    }
+    Note("A running VM uses a new boot order only after it is stopped and started again.")
+}
+
+private fun bootDeviceSummary(e: GuestEdit, device: String): String {
+    val value = e[device]
+    val volume = value.substringBefore(',')
+    return when {
+        device.startsWith("net") -> "Network (${volume.substringBefore('=')})"
+        e.isCdrom(device) -> if (volume == "none" || volume.isEmpty()) "CD drive, empty" else "CD: ${volume.substringAfterLast('/')}"
+        else -> "Disk" + (GuestEdit.diskSize(value)?.let { " $it" } ?: "")
+    }
 }

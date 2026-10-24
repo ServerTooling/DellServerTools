@@ -182,4 +182,17 @@ class ProxmoxClientIntegrationTest {
         assertThrows<ProxmoxApiException> { c.guestAddresses("pve", GuestType.QEMU, 100) }
         assertEquals(1, pve.requestsTo("/nodes/pve/qemu/100/agent/network-get-interfaces", "GET").size)
     }
+
+    @Test
+    fun `sendKey presses a key in the VM with a PUT and the CSRF token`() {
+        val c = client()
+        c.login()
+        c.sendKey("pve", 100, "ret")
+        c.sendKey("pve", 100, "ctrl-alt-delete")
+
+        assertEquals(listOf("ret", "ctrl-alt-delete"), pve.sentKeys)
+        val requests = pve.requestsTo("/nodes/pve/qemu/100/sendkey", "PUT")
+        assertEquals(2, requests.size)
+        assertTrue(requests.all { it.getHeader("CSRFPreventionToken") == "csrf-token" })
+    }
 }

@@ -818,7 +818,8 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                     FilledTonalButton(
                         onClick = {
                             vm.consoleUrl(screen.node, screen.type, screen.vmid, screen.name)?.let {
-                                vms.servers.navigate(Screen.Web(profile.id, it, "Console ${screen.vmid}", isMainUi = false))
+                                val consoleVm = ConsoleVm(screen.node, screen.vmid).takeIf { screen.type == GuestType.QEMU }
+                                vms.servers.navigate(Screen.Web(profile.id, it, "Console ${screen.vmid}", isMainUi = false, consoleVm))
                             }
                         },
                         enabled = status?.isRunning == true,

@@ -48,6 +48,9 @@ class FakeProxmox : AutoCloseable {
     @Volatile
     var cloned: Pair<String, Int>? = null  // (type, source vmid)
 
+    /** Keys pressed in VM 100 through the sendkey API, in order. */
+    val sentKeys = CopyOnWriteArrayList<String>()
+
     /** Number of upcoming authenticated requests to reject with 401, as if the ticket expired. */
     val expireTicketTimes = AtomicInteger(0)
 
@@ -211,7 +214,10 @@ class FakeProxmox : AutoCloseable {
             path == "/nodes/pve/qemu/100/status/current" -> json(
                 """{"status":"$status","name":"web-01","cpus":2,"maxmem":2147483648,"mem":0,"uptime":${if (vmRunning.get()) 60 else 0}}""",
             )
-            path == "/nodes/pve/qemu/100/config" -> json("""{"name":"web-01","memory":2048,"cores":2,"digest":"abc"}""")
+            path == "/nodes/pve/qemu/100/config" -> json(
+                """{"name":"web-01","memory":2048,"cores":2,"boot":"order=scsi0;net0","scsi0":"local-zfs:vm-100-disk-0,size=32G",
+                    "ide2":"local:iso/installer.iso,media=cdrom","net0":"virtio=BC:24:11:00:00:02,bridge=vmbr0","digest":"abc"}""",
+            )
             path == "/nodes/pve/lxc/200/status/current" -> json(
                 """{"status":"running","name":"gh-runner-1","cpus":4,"maxmem":2147483648,"mem":20971520,"uptime":120}""",
             )
@@ -238,6 +244,14 @@ class FakeProxmox : AutoCloseable {
             path == "/nodes/pve/qemu/100/status/start" && request.method == "POST" -> {
                 vmRunning.set(true)
                 json("\"UPID:pve:00000001:qmstart:100:root@pam:\"")
+            }
+            path == "/nodes/pve/qemu/100/status/reset" && request.method == "POST" -> {
+                sentKeys.clear()
+                json("\"UPID:pve:00000014:qmreset:100:root@pam:\"")
+            }
+            path == "/nodes/pve/qemu/100/sendkey" && request.method == "PUT" -> {
+                sentKeys += form(request).getValue("key")
+                json("null")
             }
             path == "/nodes/pve/qemu/100/status/stop" && request.method == "POST" -> {
                 vmRunning.set(false)

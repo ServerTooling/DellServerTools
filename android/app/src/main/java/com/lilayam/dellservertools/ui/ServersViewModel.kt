@@ -34,8 +34,17 @@ sealed interface Screen {
     data class Tasks(val profileId: String) : Screen
     data class Runners(val profileId: String) : Screen
     data class TaskLog(val profileId: String, val node: String, val upid: String, val title: String) : Screen
-    data class Web(val profileId: String, val url: String, val title: String, val isMainUi: Boolean) : Screen
+    /** [consoleVm] is set for a QEMU VM's console, which then offers keys sent through the API. */
+    data class Web(
+        val profileId: String,
+        val url: String,
+        val title: String,
+        val isMainUi: Boolean,
+        val consoleVm: ConsoleVm? = null,
+    ) : Screen
 }
+
+data class ConsoleVm(val node: String, val vmid: Int)
 
 /** Something that needs a password the app doesn't have yet. */
 data class PasswordRequest(val profileId: String, val profileName: String, val then: Screen)
