@@ -62,6 +62,11 @@ class FakeProxmox : AutoCloseable {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 requests += request
+                calls += Call(
+                    request.method.orEmpty(),
+                    request.path.orEmpty().removePrefix("/api2/json").substringBefore('?'),
+                    params(request),
+                )
                 return handle(request)
             }
         }
@@ -77,8 +82,32 @@ class FakeProxmox : AutoCloseable {
     private fun error(code: Int, reason: String) =
         MockResponse().setStatus("HTTP/1.1 $code $reason").setHeader("Content-Type", "application/json").setBody("""{"data":null}""")
 
+    /** One request as the API saw it: method, path without the query, and its form or query parameters. */
+    data class Call(val method: String, val path: String, val params: Map<String, String>)
+
+    val calls = CopyOnWriteArrayList<Call>()
+
+    /** The last call to [path] (no query) with [method], or null. */
+    fun lastCall(method: String, path: String): Call? = calls.lastOrNull { it.method == method && it.path == path }
+
+    /** The raw bodies of uploads, for checking the multipart encoding. */
+    val uploads = CopyOnWriteArrayList<ByteArray>()
+
+    private fun params(request: RecordedRequest): Map<String, String> {
+        val query = request.path.orEmpty().substringAfter('?', "")
+        val type = request.getHeader("Content-Type").orEmpty()
+        val text = if (type.startsWith("application/x-www-form-urlencoded")) request.body.clone().readUtf8() else query
+        return decode(text)
+    }
+
+    private fun decode(text: String): Map<String, String> =
+        text.split('&').filter { it.contains('=') }.associate {
+            val (k, v) = it.split('=', limit = 2)
+            URLDecoder.decode(k, "UTF-8") to URLDecoder.decode(v, "UTF-8")
+        }
+
     private fun form(request: RecordedRequest): Map<String, String> =
-        request.body.readUtf8().split('&').filter { it.contains('=') }.associate {
+        request.body.clone().readUtf8().split('&').filter { it.contains('=') }.associate {
             val (k, v) = it.split('=', limit = 2)
             URLDecoder.decode(k, "UTF-8") to URLDecoder.decode(v, "UTF-8")
         }
@@ -110,6 +139,36 @@ class FakeProxmox : AutoCloseable {
         val status = if (vmRunning.get()) "running" else "stopped"
         return when {
             path == "/version" -> json("""{"version":"8.2.4","release":"8.2"}""")
+            // ---- storage management
+            request.method == "DELETE" && path.startsWith("/nodes/pve/storage/local/content/") ->
+                json("\"UPID:pve:00000020:imgdel:local:root@pam:\"")
+            request.method == "PUT" && path.startsWith("/nodes/pve/storage/local/content/") -> json("null")
+            path.startsWith("/nodes/pve/query-url-metadata") ->
+                json("""{"filename":"debian-13.1.0-amd64-netinst.iso","size":754974720,"mimetype":"application/x-iso9660-image"}""")
+            path == "/nodes/pve/storage/local/download-url" && request.method == "POST" ->
+                json("\"UPID:pve:00000021:download:local:root@pam:\"")
+            path == "/nodes/pve/storage/local/upload" && request.method == "POST" -> {
+                uploads += request.body.clone().readByteArray()
+                json("\"UPID:pve:00000022:imgcopy::root@pam:\"")
+            }
+            path.startsWith("/nodes/pve/storage/local/prunebackups") && request.method == "GET" -> {
+                val pruning = params(request)["prune-backups"] != "keep-all=1"
+                json(
+                    """[
+                      {"volid":"local:backup/vzdump-qemu-100-2026_10_13-01_00_00.vma.zst","mark":"keep","ctime":1791853200,"vmid":100,"type":"qemu"},
+                      {"volid":"local:backup/vzdump-qemu-100-2026_10_06-01_00_00.vma.zst","mark":"${if (pruning) "remove" else "keep"}","ctime":1791248400,"vmid":100,"type":"qemu"},
+                      {"volid":"local:backup/vzdump-lxc-200-2026_10_12-01_00_00.tar.zst","mark":"keep","ctime":1791766800,"vmid":200,"type":"lxc"}
+                    ]""",
+                )
+            }
+            path.startsWith("/nodes/pve/storage/local/prunebackups") && request.method == "DELETE" ->
+                json("\"UPID:pve:00000023:prunebackups:local:root@pam:\"")
+            path == "/storage" && request.method == "POST" -> json("null")
+            path.startsWith("/storage/") && (request.method == "PUT" || request.method == "DELETE") -> json("null")
+            path == "/nodes/pve/scan/zfs" -> json("""[{"pool":"tank","size":1000,"alloc":10,"free":990}]""")
+            path == "/nodes/pve/scan/lvm" -> json("""[{"vg":"pve","size":1000,"free":10}]""")
+            path.startsWith("/nodes/pve/scan/lvmthin") -> json("""[{"lv":"data"}]""")
+            path.startsWith("/nodes/pve/scan/nfs") -> json("""[{"path":"/export/iso","options":"192.0.2.0/24"}]""")
             path == "/cluster/resources" -> json(
                 """[
                   {"id":"node/pve","type":"node","node":"pve","status":"online","cpu":0.03,"maxcpu":16,"mem":4294967296,"maxmem":34359738368,"uptime":7200},
@@ -131,7 +190,7 @@ class FakeProxmox : AutoCloseable {
             path.startsWith("/nodes/pve/storage/local/content") && path.contains("content=vztmpl") ->
                 json("""[{"volid":"local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst","size":130000000},{"volid":"local:vztmpl/alpine-3.20-default_20240908_amd64.tar.xz","size":3000000}]""")
             path.startsWith("/nodes/pve/storage/local/content") && path.contains("content=backup") -> json(BACKUPS)
-            path == "/nodes/pve/storage/local/content" -> json(BACKUPS)
+            path == "/nodes/pve/storage/local/content" -> json(BACKUPS.trimEnd().removeSuffix("]") + ",$ISO]")
             path.startsWith("/nodes/pve/vzdump/extractconfig") -> {
                 val volume = URLDecoder.decode(path.substringAfter("volume="), "UTF-8")
                 when {
@@ -253,6 +312,8 @@ class FakeProxmox : AutoCloseable {
     }
 
     private companion object {
+        const val ISO = """{"volid":"local:iso/debian-12.7.0-amd64-netinst.iso","content":"iso","format":"iso","size":660000000}"""
+
         /** Newest first per guest; one VM and one container backup on `local`. */
         const val BACKUPS = """[
           {"volid":"local:backup/vzdump-qemu-100-2026_10_13-01_00_00.vma.zst","content":"backup","format":"vma.zst","size":1073741824,

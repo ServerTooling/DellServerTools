@@ -2,6 +2,8 @@ package com.lilayam.dellservertools.core.proxmox
 
 import com.lilayam.dellservertools.core.formatHostForUrl
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.URL
 import java.net.URLEncoder
 import javax.net.ssl.HttpsURLConnection
@@ -93,6 +95,127 @@ class ProxmoxClient(
         ProxmoxJson.zfsPool(get("/nodes/${enc(node)}/disks/zfs/${enc(pool)}") as JSONObject)
 
     fun disks(node: String): List<PhysicalDisk> = ProxmoxJson.disks(get("/nodes/${enc(node)}/disks/list") as JSONArray)
+
+    // ---- storage management
+
+    /** Deletes one volume (ISO, template, backup, unused disk). Returns the task UPID when it runs as a task. */
+    fun deleteVolume(node: String, storage: String, volid: String): String? =
+        request("DELETE", "${storagePath(node, storage)}/content/${enc(volid)}", emptyMap()) as? String
+
+    /** Sets a backup's notes and protection flag (a protected backup is never pruned or deleted). */
+    fun updateVolume(node: String, storage: String, volid: String, notes: String, protected: Boolean) {
+        request(
+            "PUT",
+            "${storagePath(node, storage)}/content/${enc(volid)}",
+            mapOf("notes" to notes, "protected" to if (protected) "1" else "0"),
+        )
+    }
+
+    /** File name and size of a URL, as the server sees it, before downloading. */
+    fun queryUrlMetadata(node: String, url: String, verifyCertificates: Boolean = true): UrlMetadata =
+        UrlMetadata.parse(
+            request(
+                "GET",
+                "/nodes/${enc(node)}/query-url-metadata",
+                mapOf("url" to url, "verify-certificates" to if (verifyCertificates) "1" else "0"),
+            ) as? JSONObject,
+        )
+
+    /** Makes the server download an ISO or template itself. Returns the task UPID. */
+    fun downloadUrl(node: String, storage: String, request: DownloadUrlRequest): String? =
+        post("${storagePath(node, storage)}/download-url", request.toParams()) as? String
+
+    /**
+     * Uploads an ISO or template from the phone ([content] `iso` or `vztmpl`), streaming [input] of exactly [size]
+     * bytes so a multi-GB ISO never sits in memory. Returns the UPID of the task that moves it into place.
+     */
+    fun upload(
+        node: String,
+        storage: String,
+        content: String,
+        filename: String,
+        size: Long,
+        input: InputStream,
+        onProgress: (Long) -> Unit = {},
+    ): String? {
+        // Renew an expired ticket now: the body can't be sent twice, so the usual retry on 401 can't apply.
+        get("/version")
+        val boundary = "----dellservertools" + System.nanoTime()
+        val head = buildString {
+            append("--$boundary\r\nContent-Disposition: form-data; name=\"content\"\r\n\r\n$content\r\n")
+            // pveproxy wants the file as the last part, under the name "filename".
+            append("--$boundary\r\nContent-Disposition: form-data; name=\"filename\"; filename=\"")
+            append(filename.replace("\"", "").replace("\r", "").replace("\n", ""))
+            append("\"\r\nContent-Type: application/octet-stream\r\n\r\n")
+        }.toByteArray(Charsets.UTF_8)
+        val tail = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
+        val body = RequestBody("multipart/form-data; boundary=$boundary", head.size + size + tail.size) { out ->
+            out.write(head)
+            val buffer = ByteArray(256 * 1024)
+            var sent = 0L
+            var reported = 0L
+            while (sent < size) {
+                val n = input.read(buffer, 0, minOf(buffer.size.toLong(), size - sent).toInt())
+                if (n < 0) throw IOException("The file ended after $sent of $size bytes")
+                out.write(buffer, 0, n)
+                sent += n
+                if (sent - reported >= PROGRESS_STEP || sent == size) {
+                    reported = sent
+                    onProgress(sent)
+                }
+            }
+            out.write(tail)
+        }
+        return rawRequest("POST", "${storagePath(node, storage)}/upload", emptyMap(), authenticated = true, body = body) as? String
+    }
+
+    /** Which backups a retention policy would keep or remove; [vmid] limits it to one guest. */
+    fun prunePreview(node: String, storage: String, options: PruneOptions, vmid: Int? = null): List<PruneEntry> =
+        PruneEntry.parse(request("GET", "${storagePath(node, storage)}/prunebackups", pruneParams(options, vmid)) as JSONArray)
+
+    /** Removes the backups [prunePreview] marks `remove`. Returns the task UPID. */
+    fun pruneBackups(node: String, storage: String, options: PruneOptions, vmid: Int? = null): String? =
+        request("DELETE", "${storagePath(node, storage)}/prunebackups", pruneParams(options, vmid)) as? String
+
+    private fun pruneParams(options: PruneOptions, vmid: Int?): Map<String, String> {
+        val p = linkedMapOf("prune-backups" to options.toParam())
+        vmid?.let { p["vmid"] = it.toString() }
+        return p
+    }
+
+    /** The storage.cfg entry as a map (`GET /storage/{id}`). */
+    fun storageDefinition(storage: String): Map<String, String> =
+        (get("/storage/${enc(storage)}") as JSONObject).let { o ->
+            o.keys().asSequence().filter { it != "digest" }.associateWith { o.opt(it)?.toString().orEmpty() }
+        }
+
+    fun createStorage(form: StorageForm) {
+        post("/storage", form.createParams())
+    }
+
+    fun updateStorage(form: StorageForm) {
+        val params = form.updateParams()
+        if (params.isNotEmpty()) request("PUT", "/storage/${enc(form.id)}", params)
+    }
+
+    /** Removes the storage definition only; the data on it stays where it is. */
+    fun deleteStorage(storage: String) {
+        request("DELETE", "/storage/${enc(storage)}", emptyMap())
+    }
+
+    /** ZFS pools, LVM volume groups and thin pools on the node, and NFS exports of a server, for the add form. */
+    fun scanZfs(node: String): List<String> = scan(node, "zfs", emptyMap(), "pool")
+
+    fun scanLvm(node: String): List<String> = scan(node, "lvm", emptyMap(), "vg")
+
+    fun scanLvmThin(node: String, vg: String): List<String> = scan(node, "lvmthin", mapOf("vg" to vg), "lv")
+
+    fun scanNfs(node: String, server: String): List<String> = scan(node, "nfs", mapOf("server" to server), "path")
+
+    private fun scan(node: String, type: String, params: Map<String, String>, field: String): List<String> {
+        val data = request("GET", "/nodes/${enc(node)}/scan/$type", params) as? JSONArray ?: return emptyList()
+        return (0 until data.length()).mapNotNull { data.optJSONObject(it)?.optString(field)?.takeIf(String::isNotEmpty) }
+    }
 
     fun guestStatus(node: String, type: GuestType, vmid: Int): GuestStatus =
         ProxmoxJson.guestStatus(get("${guestPath(node, type, vmid)}/status/current") as JSONObject)
@@ -262,7 +385,16 @@ class ProxmoxClient(
         }
     }
 
-    private fun rawRequest(method: String, path: String, params: Map<String, String>, authenticated: Boolean): Any? {
+    /** A request body other than the usual form, sent with a fixed length so it is streamed, not buffered. */
+    private class RequestBody(val contentType: String, val length: Long, val write: (OutputStream) -> Unit)
+
+    private fun rawRequest(
+        method: String,
+        path: String,
+        params: Map<String, String>,
+        authenticated: Boolean,
+        body: RequestBody? = null,
+    ): Any? {
         val form = params.entries.joinToString("&") { "${enc(it.key)}=${enc(it.value)}" }
         val hasBody = method == "POST" || method == "PUT"
         val url = URL(
@@ -277,7 +409,8 @@ class ProxmoxClient(
         conn.hostnameVerifier = tls.hostnameVerifier
         conn.requestMethod = method
         conn.connectTimeout = 15_000
-        conn.readTimeout = 60_000
+        // After an upload's last byte, pveproxy still copies the file before it answers.
+        conn.readTimeout = if (body != null) 10 * 60_000 else 60_000
         conn.setRequestProperty("Accept", "application/json")
         if (authenticated) {
             when (credentials) {
@@ -290,7 +423,12 @@ class ProxmoxClient(
             }
         }
         try {
-            if (hasBody) {
+            if (body != null) {
+                conn.doOutput = true
+                conn.setFixedLengthStreamingMode(body.length)
+                conn.setRequestProperty("Content-Type", body.contentType)
+                conn.outputStream.use(body.write)
+            } else if (hasBody) {
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
                 conn.outputStream.use { it.write(form.toByteArray(Charsets.UTF_8)) }
@@ -323,6 +461,12 @@ class ProxmoxClient(
             details.isNotBlank() -> "HTTP $status: $details"
             else -> "HTTP $status ${reason.orEmpty()}".trim()
         }
+    }
+
+    private fun storagePath(node: String, storage: String) = "/nodes/${enc(node)}/storage/${enc(storage)}"
+
+    private companion object {
+        const val PROGRESS_STEP = 4L * 1024 * 1024
     }
 
     private fun guestPath(node: String, type: GuestType, vmid: Int) = "/nodes/${enc(node)}/${type.apiName}/$vmid"

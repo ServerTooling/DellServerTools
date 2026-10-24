@@ -24,6 +24,9 @@ sealed interface Screen {
     data class Proxmox(val profileId: String) : Screen
     data class Node(val profileId: String, val node: String) : Screen
     data class Storage(val profileId: String, val node: String, val storage: String) : Screen
+    /** Add a storage ([storage] null) or edit one. */
+    data class StorageForm(val profileId: String, val node: String, val storage: String?) : Screen
+    data class Prune(val profileId: String, val node: String, val storage: String) : Screen
     data class CreateCt(val profileId: String, val node: String) : Screen
     data class CreateVm(val profileId: String, val node: String) : Screen
     data class EditGuest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
