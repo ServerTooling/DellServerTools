@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.lilayam.dellservertools.core.JnlpParser
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.ServerType
+import com.lilayam.dellservertools.core.proxmox.FirewallScope
 import com.lilayam.dellservertools.core.proxmox.GuestType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,7 @@ sealed interface Screen {
     data class Guest(val profileId: String, val node: String, val type: GuestType, val vmid: Int, val name: String) : Screen
     data class Tasks(val profileId: String) : Screen
     data class BackupJobs(val profileId: String) : Screen
+    data class Firewall(val profileId: String, val scope: FirewallScope) : Screen
     data class BackupJobEdit(val profileId: String, val id: String?) : Screen
     data class Runners(val profileId: String) : Screen
     data class TaskLog(val profileId: String, val node: String, val upid: String, val title: String) : Screen

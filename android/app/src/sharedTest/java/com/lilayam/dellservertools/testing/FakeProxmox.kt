@@ -69,6 +69,24 @@ class FakeProxmox : AutoCloseable {
         ),
     )
 
+    /** Firewall rules per rules path (e.g. `/cluster/firewall/rules`), in order; positions are list indexes. */
+    val firewallRules = java.util.concurrent.ConcurrentHashMap<String, MutableList<Map<String, String>>>().apply {
+        put(
+            "/cluster/firewall/rules",
+            mutableListOf(
+                mapOf("type" to "in", "action" to "ACCEPT", "enable" to "1", "proto" to "tcp", "dport" to "22", "source" to "192.0.2.0/24", "comment" to "ssh from lab"),
+                mapOf("type" to "in", "action" to "DROP", "enable" to "0", "macro" to "Ping"),
+            ),
+        )
+    }
+
+    /** Firewall options per firewall path; PUT merges, `delete` removes. */
+    val firewallOptions = java.util.concurrent.ConcurrentHashMap<String, MutableMap<String, String>>()
+
+    val firewallAliases = java.util.concurrent.ConcurrentHashMap(mapOf("lab" to ("192.0.2.0/24" to "lab network")))
+    val ipSets = java.util.concurrent.ConcurrentHashMap(mapOf("admins" to mutableListOf("192.0.2.10")))
+    val securityGroups = CopyOnWriteArrayList(listOf("webserver"))
+
     /** Keys pressed in VM 100 through the sendkey API, in order. */
     val sentKeys = CopyOnWriteArrayList<String>()
 
@@ -264,6 +282,7 @@ class FakeProxmox : AutoCloseable {
             )
             path.startsWith("/nodes/pve/storage/") && path.contains("/content") -> json("[]")
             path == "/cluster/nextid" -> json("\"201\"")
+            path.contains("/firewall") -> firewall(request, path.substringBefore('?'))
             // ---- backup jobs
             path == "/cluster/backup" && request.method == "GET" -> json(backupJobs.values.joinToString(",", "[", "]"))
             path == "/cluster/backup" && request.method == "POST" -> {
@@ -385,6 +404,115 @@ class FakeProxmox : AutoCloseable {
                 """[{"upid":"UPID:pve:00000001:qmstart:100:root@pam:","node":"pve","type":"qmstart","id":"100","user":"root@pam","starttime":1700000000,"endtime":1700000001,"status":"OK"}]""",
             )
             else -> error(501, "Method '$path' not implemented in FakeProxmox")
+        }
+    }
+
+    private fun firewall(request: RecordedRequest, path: String): MockResponse {
+        val method = request.method.orEmpty()
+        val rules = Regex("^(.*/firewall/rules|/cluster/firewall/groups/[^/]+)(?:/(\\d+))?$").find(path)
+        if (rules != null && path != "/cluster/firewall/groups/macros") {
+            val list = firewallRules.getOrPut(rules.groupValues[1]) { mutableListOf() }
+            val pos = rules.groupValues[2].toIntOrNull()
+            return when {
+                method == "GET" && pos == null -> json(
+                    list.mapIndexed { i, r -> org.json.JSONObject(r + ("pos" to i.toString())).put("pos", i).put("enable", r["enable"]?.toInt() ?: 0) }
+                        .joinToString(",", "[", "]"),
+                )
+                method == "POST" && pos == null -> {
+                    list.add(0, form(request))
+                    json("null")
+                }
+                method == "PUT" && pos != null -> {
+                    val p = form(request)
+                    val rule = list[pos]
+                    val moveto = p["moveto"]?.toInt()
+                    if (moveto != null) {
+                        // Proxmox's order: the rule goes before the rule that was at `moveto`.
+                        val others = list.filterIndexed { i, _ -> i != pos }.toMutableList()
+                        val before = list.getOrNull(moveto)
+                        val at = if (before == null || moveto >= list.size) others.size else others.indexOf(before)
+                        others.add(at, rule)
+                        list.clear()
+                        list.addAll(others)
+                    } else {
+                        val gone = p["delete"].orEmpty().split(',').toSet()
+                        list[pos] = (rule + p - "delete").filterKeys { it !in gone }
+                    }
+                    json("null")
+                }
+                method == "DELETE" && pos != null -> {
+                    list.removeAt(pos)
+                    json("null")
+                }
+                else -> error(501, "firewall $method $path")
+            }
+        }
+        val options = Regex("^(.*/firewall)/options$").find(path)
+        if (options != null) {
+            val map = firewallOptions.getOrPut(options.groupValues[1]) { mutableMapOf() }
+            if (method == "PUT") {
+                val p = form(request)
+                p["delete"]?.split(',')?.forEach { map.remove(it) }
+                map.putAll(p - "delete")
+                return json("null")
+            }
+            return json(org.json.JSONObject(map as Map<*, *>).toString())
+        }
+        return when {
+            path == "/cluster/firewall/aliases" && method == "GET" -> json(
+                firewallAliases.entries.joinToString(",", "[", "]") { (n, v) ->
+                    org.json.JSONObject(mapOf("name" to n, "cidr" to v.first, "comment" to v.second)).toString()
+                },
+            )
+            path == "/cluster/firewall/aliases" && method == "POST" -> {
+                val p = form(request)
+                firewallAliases[p.getValue("name")] = p.getValue("cidr") to p["comment"].orEmpty()
+                json("null")
+            }
+            path.startsWith("/cluster/firewall/aliases/") && method == "PUT" -> {
+                val p = form(request)
+                firewallAliases[path.substringAfterLast('/')] = p.getValue("cidr") to p["comment"].orEmpty()
+                json("null")
+            }
+            path.startsWith("/cluster/firewall/aliases/") && method == "DELETE" -> {
+                firewallAliases.remove(path.substringAfterLast('/'))
+                json("null")
+            }
+            path == "/cluster/firewall/ipset" && method == "GET" ->
+                json(ipSets.keys.joinToString(",", "[", "]") { """{"name":"$it"}""" })
+            path == "/cluster/firewall/ipset" && method == "POST" -> {
+                ipSets[form(request).getValue("name")] = mutableListOf()
+                json("null")
+            }
+            path.startsWith("/cluster/firewall/ipset/") -> {
+                val parts = path.removePrefix("/cluster/firewall/ipset/").split('/')
+                val set = ipSets.getValue(parts[0])
+                when {
+                    method == "GET" -> json(set.joinToString(",", "[", "]") { """{"cidr":"$it"}""" })
+                    method == "POST" -> {
+                        set += form(request).getValue("cidr")
+                        json("null")
+                    }
+                    method == "DELETE" && parts.size == 2 -> {
+                        set.remove(URLDecoder.decode(parts[1], "UTF-8"))
+                        json("null")
+                    }
+                    method == "DELETE" -> {
+                        ipSets.remove(parts[0])
+                        json("null")
+                    }
+                    else -> error(501, "ipset $method $path")
+                }
+            }
+            path == "/cluster/firewall/groups" && method == "GET" ->
+                json(securityGroups.joinToString(",", "[", "]") { """{"group":"$it"}""" })
+            path == "/cluster/firewall/groups" && method == "POST" -> {
+                securityGroups += form(request).getValue("group")
+                json("null")
+            }
+            path == "/cluster/firewall/macros" -> json("""[{"macro":"SSH","descr":"Secure shell traffic"},{"macro":"Ping","descr":"ICMP echo request"}]""")
+            path.endsWith("/firewall/log") -> json("""[{"n":1,"t":"100 6 net0-IN 24/Oct/2026:10:00:00 +0000 policy DROP: IN=fwbr100i0 SRC=192.0.2.99"}]""")
+            else -> error(501, "firewall $method $path")
         }
     }
 

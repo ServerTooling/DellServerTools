@@ -435,6 +435,13 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** A configuration change that takes effect at once (no task), shown in the busy bar; [onDone] runs on success. */
+    fun change(label: String, onDone: () -> Unit = {}, block: (ProxmoxClient) -> Unit) =
+        runTask(label, "", refreshGuest = null, afterDone = onDone) { c ->
+            block(c)
+            null
+        }
+
     // ------------------------------------------------------------ backup jobs
 
     fun saveBackupJob(form: BackupJobForm, onDone: () -> Unit) {
