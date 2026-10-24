@@ -474,6 +474,17 @@ class ProxmoxClient(
         delete("/access/tfa/${enc(userid)}/${enc(id)}")
     }
 
+    // ---- graphs (rrddata), averaged per step like the web UI
+
+    fun nodeRrd(node: String, timeframe: Timeframe): List<RrdPoint> =
+        Rrd.parse(get("/nodes/${enc(node)}/rrddata?timeframe=${timeframe.api}&cf=AVERAGE") as JSONArray)
+
+    fun guestRrd(node: String, type: GuestType, vmid: Int, timeframe: Timeframe): List<RrdPoint> =
+        Rrd.parse(get("${guestPath(node, type, vmid)}/rrddata?timeframe=${timeframe.api}&cf=AVERAGE") as JSONArray)
+
+    fun storageRrd(node: String, storage: String, timeframe: Timeframe): List<RrdPoint> =
+        Rrd.parse(get("${storagePath(node, storage)}/rrddata?timeframe=${timeframe.api}&cf=AVERAGE") as JSONArray)
+
     // ---- firewall (datacenter, node, guest and security groups)
 
     fun firewallRules(scope: FirewallScope): List<FirewallRule> = FirewallRule.parse(get(scope.rulesPath) as JSONArray)

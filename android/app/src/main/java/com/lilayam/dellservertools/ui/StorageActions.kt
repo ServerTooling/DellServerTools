@@ -94,6 +94,12 @@ internal fun StorageActions(screen: Screen.Storage, content: List<String>, edita
                 Text("Download from URL")
             }
         }
+        OutlinedButton(
+            onClick = {
+                vms.servers.navigate(Screen.Graphs(screen.profileId, screen.node, "Storage ${screen.storage} graphs", storage = screen.storage))
+            },
+            modifier = Modifier.testTag("storage-graphs"),
+        ) { Text("Graphs") }
         if ("backup" in content) {
             OutlinedButton(
                 onClick = { vms.servers.navigate(Screen.Prune(screen.profileId, screen.node, screen.storage)) },

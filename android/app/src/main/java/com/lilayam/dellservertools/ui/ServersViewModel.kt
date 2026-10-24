@@ -39,6 +39,16 @@ sealed interface Screen {
     data class BackupJobs(val profileId: String) : Screen
     data class Firewall(val profileId: String, val scope: FirewallScope) : Screen
     data class Permissions(val profileId: String) : Screen
+
+    /** Graphs of a node, or of one of its guests ([guestType] and [vmid]) or storages. */
+    data class Graphs(
+        val profileId: String,
+        val node: String,
+        val title: String,
+        val guestType: GuestType? = null,
+        val vmid: Int? = null,
+        val storage: String? = null,
+    ) : Screen
     data class NodeSystem(val profileId: String, val node: String) : Screen
     data class BackupJobEdit(val profileId: String, val id: String?) : Screen
     data class Runners(val profileId: String) : Screen
