@@ -5,6 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.proxmox.CloneRequest
+import com.lilayam.dellservertools.core.proxmox.DownloadUrlRequest
+import com.lilayam.dellservertools.core.proxmox.PruneOptions
+import com.lilayam.dellservertools.core.proxmox.StorageForm
 import com.lilayam.dellservertools.core.proxmox.GuestEdit
 import com.lilayam.dellservertools.core.proxmox.GuestAddress
 import com.lilayam.dellservertools.core.proxmox.GuestNetwork
@@ -28,6 +31,7 @@ import com.lilayam.dellservertools.core.proxmox.StorageVolume
 import com.lilayam.dellservertools.core.proxmox.TaskSummary
 import com.lilayam.dellservertools.core.proxmox.UntrustedCertificateException
 import com.lilayam.dellservertools.core.proxmox.ZfsPool
+import java.io.InputStream
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
@@ -348,6 +352,65 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
     fun backup(node: String, type: GuestType, vmid: Int, storage: String?) =
         runTask("Backup ${type.label} $vmid", node, refreshGuest = Triple(node, type, vmid)) { c ->
             c.backup(node, vmid, storage)
+        }
+
+    // ------------------------------------------------------------ storage
+
+    /** Runs one server call off the main thread for a screen that keeps the result itself. */
+    suspend fun <T> fetch(block: (ProxmoxClient) -> T): Result<T> {
+        val c = client ?: return Result.failure(IllegalStateException("Not connected"))
+        return withContext(Dispatchers.IO) { runCatching { block(c) } }
+            .recoverCatching { e -> throw IllegalStateException(describe(e), e) }
+    }
+
+    fun deleteVolume(node: String, storage: String, volume: StorageVolume) =
+        runTask("Delete ${volume.name}", node, refreshGuest = null, afterDone = { loadStorage(node, storage) }) { c ->
+            c.deleteVolume(node, storage, volume.volid)
+        }
+
+    fun updateVolume(node: String, storage: String, volume: StorageVolume, notes: String, protected: Boolean) =
+        runTask("Update ${volume.name}", node, refreshGuest = null, afterDone = { loadStorage(node, storage) }) { c ->
+            c.updateVolume(node, storage, volume.volid, notes, protected)
+            null
+        }
+
+    fun downloadUrl(node: String, storage: String, request: DownloadUrlRequest) =
+        runTask("Download ${request.filename}", node, refreshGuest = null, afterDone = { loadStorage(node, storage) }) { c ->
+            c.downloadUrl(node, storage, request)
+        }
+
+    /** Streams a file from the phone into the storage, showing the percentage sent in the busy bar. */
+    fun upload(node: String, storage: String, content: String, filename: String, size: Long, open: () -> InputStream) {
+        val label = "Upload $filename"
+        runTask(label, node, refreshGuest = null, afterDone = { loadStorage(node, storage) }) { c ->
+            open().use { input ->
+                c.upload(node, storage, content, filename, size, input) { sent ->
+                    val percent = if (size > 0) sent * 100 / size else 100
+                    viewModelScope.launch(Dispatchers.Main) {
+                        _state.update { if (it.busy?.startsWith(label) == true) it.copy(busy = "$label ($percent%)") else it }
+                    }
+                }
+            }
+        }
+    }
+
+    fun pruneBackups(node: String, storage: String, options: PruneOptions, vmid: Int?, onDone: () -> Unit) =
+        runTask("Prune backups on $storage", node, refreshGuest = null, afterDone = onDone) { c ->
+            c.pruneBackups(node, storage, options, vmid)
+        }
+
+    fun saveStorage(form: StorageForm, onDone: () -> Unit) {
+        val label = if (form.isNew) "Add storage ${form.id}" else "Update storage ${form.id}"
+        runTask(label, "", refreshGuest = null, afterDone = onDone) { c ->
+            if (form.isNew) c.createStorage(form) else c.updateStorage(form)
+            null
+        }
+    }
+
+    fun deleteStorage(storage: String, onDone: () -> Unit) =
+        runTask("Remove storage $storage", "", refreshGuest = null, afterDone = onDone) { c ->
+            c.deleteStorage(storage)
+            null
         }
 
     // ------------------------------------------------------------ restore

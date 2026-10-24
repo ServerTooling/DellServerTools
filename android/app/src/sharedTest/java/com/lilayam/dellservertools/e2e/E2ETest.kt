@@ -4,7 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.view.ViewGroup
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -84,13 +87,20 @@ abstract class E2ETest {
     protected fun waitUntil(timeoutMs: Long = 20_000, condition: () -> Boolean) = compose.waitUntil(timeoutMs, condition)
 
     protected fun type(tag: String, text: String, replace: Boolean = false) {
-        val node = compose.onNodeWithTag(tag).performScrollTo()
+        val node = scrolledTo(tag)
         if (replace) node.performTextClearance()
         node.performTextInput(text)
     }
 
     protected fun tap(tag: String) {
-        compose.onNodeWithTag(tag).performScrollTo().performClick()
+        scrolledTo(tag).performClick()
+    }
+
+    /** The node, scrolled into view when it sits in a scrollable column; a dialog's buttons sit outside one. */
+    private fun scrolledTo(tag: String): SemanticsNodeInteraction {
+        val node = compose.onNodeWithTag(tag)
+        val scrollable = compose.onAllNodes(hasTestTag(tag) and hasAnyAncestor(hasScrollAction())).fetchSemanticsNodes().isNotEmpty()
+        return if (scrollable) node.performScrollTo() else node
     }
 
     /** Scrolls the screen's list until a node with [text] is composed. */

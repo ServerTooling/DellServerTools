@@ -55,6 +55,7 @@ class RestoreBackupE2ETest : ProxmoxE2ETestBase() {
         waitForText("/var/lib/vz")
         scrollListTo("vzdump-lxc-200-2026_10_12-01_00_00.tar.zst")
         tap("volume-vzdump-lxc-200-2026_10_12-01_00_00.tar.zst")
+        tap("volume-restore")
 
         // Preselected; the free id comes from Proxmox and the unprivileged flag from the backup's config.
         waitForText("Backup of \"gh-runner-1\".")

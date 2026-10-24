@@ -72,7 +72,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.Format
-import com.lilayam.dellservertools.core.proxmox.RestoreRequest
+import com.lilayam.dellservertools.core.proxmox.StorageVolume
 import com.lilayam.dellservertools.core.proxmox.GuestNetwork
 import com.lilayam.dellservertools.core.proxmox.GuestShell
 import com.lilayam.dellservertools.core.proxmox.GuestType
@@ -375,7 +375,7 @@ private fun diskHealthColor(health: String): Color = when (health.uppercase()) {
     else -> Red
 }
 
-private fun contentLabel(content: String): String = when (content) {
+internal fun contentLabel(content: String): String = when (content) {
     "images" -> "VM disks"
     "rootdir" -> "Container volumes"
     "iso" -> "ISO images"
@@ -399,12 +399,14 @@ fun StorageScreen(screen: Screen.Storage, vms: AppViewModels) {
 
     val detail = state.storage?.takeIf { it.node == screen.node && it.storage == screen.storage }
     val status = detail?.status
+    var openVolume by remember { mutableStateOf<StorageVolume?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Storage ${screen.storage}") },
             navigationIcon = { IconButton(onClick = { vms.servers.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
         )
+        BusyBar(state.busy)
         LazyColumn(
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -472,15 +474,14 @@ fun StorageScreen(screen: Screen.Storage, vms: AppViewModels) {
                     }
                 }
             }
+            // Below the details, so the summary and configuration stay on the first screen.
+            // The storage.cfg entry only loads with Datastore.Allocate, which editing needs too.
+            section("Actions")
+            item { StorageActions(screen, status.content, editable = detail.config.isNotEmpty(), vms) }
             detail.volumes.groupBy { it.content }.forEach { (content, volumes) ->
                 section("${contentLabel(content)} (${volumes.size}, ${Format.bytes(volumes.sumOf { it.size })})")
                 items(volumes, key = { it.volid }) { v ->
-                    // A backup opens the restore form with it already picked.
-                    val restorable = v.content == "backup" && RestoreRequest.typeOf(v) != null
-                    val open = Modifier.clickable {
-                        vms.servers.navigate(Screen.Restore(screen.profileId, screen.node, volid = v.volid))
-                    }
-                    Card(Modifier.fillMaxWidth().then(if (restorable) open.testTag("volume-${v.name}") else Modifier)) {
+                    Card(Modifier.fillMaxWidth().clickable { openVolume = v }.testTag("volume-${v.name}")) {
                         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -506,6 +507,7 @@ fun StorageScreen(screen: Screen.Storage, vms: AppViewModels) {
             }
         }
     }
+    openVolume?.let { v -> VolumeDialog(screen, v, vms) { openVolume = null } }
 }
 
 @Composable
@@ -618,8 +620,14 @@ fun NodeScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
                     }
                 }
             }
-            if (detail?.storage?.isNotEmpty() == true) {
+            if (detail?.status != null) {
                 section("Storage")
+                item {
+                    OutlinedButton(
+                        onClick = { vms.servers.navigate(Screen.StorageForm(profile.id, node, null)) },
+                        modifier = Modifier.testTag("node-add-storage"),
+                    ) { Text("Add storage") }
+                }
                 items(detail.storage, key = { it.storage }) { s ->
                     StorageRow(
                         "${s.storage} (${s.type})",
