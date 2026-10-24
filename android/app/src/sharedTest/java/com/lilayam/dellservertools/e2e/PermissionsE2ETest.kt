@@ -1,14 +1,18 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -22,6 +26,13 @@ class PermissionsE2ETest : ProxmoxE2ETestBase() {
     /** The tab's lazy list (the tab row scrolls too, but sideways and without indices). */
     private fun scrollTabTo(tag: String) {
         waitUntil { runCatching { compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag(tag)) }.isSuccess }
+    }
+
+    // A tap on a disabled button is dropped, and the previous change's snackbar can cover a button and swallow a real
+    // touch, so wait for it to be enabled and click through semantics.
+    private fun tapEnabled(tag: String) {
+        waitUntil { compose.onAllNodes(hasTestTag(tag) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
     }
 
     private fun confirmInDialog(label: String) {
@@ -52,7 +63,7 @@ class PermissionsE2ETest : ProxmoxE2ETestBase() {
 
         tap("perm-tab-acl")
         waitFor("acl-0")
-        tap("acl-add")
+        tapEnabled("acl-add")
         type("acl-path", "/vms/100", replace = true)
         waitFor("acl-who-carol@pve")
         tap("acl-who-carol@pve")
@@ -80,11 +91,11 @@ class PermissionsE2ETest : ProxmoxE2ETestBase() {
 
         tap("perm-tab-pools")
         waitFor("pool-add")
-        tap("pool-add")
+        tapEnabled("pool-add")
         type("pool-id", "lab")
         tap("pool-save")
         waitFor("pool-lab")
-        tap("pool-lab")
+        tapEnabled("pool-lab")
         waitFor("pool-guest-100")
         tap("pool-guest-100")
         tap("pool-save")
@@ -92,7 +103,7 @@ class PermissionsE2ETest : ProxmoxE2ETestBase() {
 
         tap("perm-tab-tfa")
         scrollTabTo("tfa-delete-alice@pve-totp1")
-        tap("tfa-delete-alice@pve-totp1")
+        tapEnabled("tfa-delete-alice@pve-totp1")
         confirmInDialog("Remove")
         waitUntil { pve.tfa.isEmpty() }
     }
