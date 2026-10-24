@@ -103,7 +103,7 @@ class ProxmoxClientIntegrationTest {
         assertEquals(16, c.nodeStatus("pve").cpuCount)
         assertEquals(listOf("local", "local-zfs"), c.storage("pve").map { it.storage })
         assertEquals("stopped", c.guestStatus("pve", GuestType.QEMU, 100).status)
-        assertEquals(listOf("name", "cores", "memory").sorted(), c.guestConfig("pve", GuestType.QEMU, 100).map { it.first }.sorted())
+        assertEquals(listOf("name", "cores", "memory", "boot", "scsi0", "ide2", "net0").sorted(), c.guestConfig("pve", GuestType.QEMU, 100).map { it.first }.sorted())
         assertEquals(listOf("clean", "current"), c.snapshots("pve", GuestType.QEMU, 100).map { it.name })
         assertEquals(1, c.clusterTasks().size)
     }
