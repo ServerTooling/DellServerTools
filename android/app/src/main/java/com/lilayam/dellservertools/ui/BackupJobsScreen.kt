@@ -171,7 +171,8 @@ fun BackupJobFormScreen(screen: Screen.BackupJobEdit, vms: AppViewModels) {
         val id = screen.id ?: return@LaunchedEffect
         if (form != null) return@LaunchedEffect
         vm.fetch { c -> c.backupJobs().firstOrNull { it.id == id } }
-            .onSuccess { job -> if (job == null) loadError = "Job $id no longer exists." else form = job.form }
+            // A second run of this effect (e.g. after a reconnect) must not undo what the user already changed.
+            .onSuccess { job -> if (job == null) loadError = "Job $id no longer exists." else if (form == null) form = job.form }
             .onFailure { loadError = it.message }
     }
     LaunchedEffect(nodes.firstOrNull()) {

@@ -2,6 +2,8 @@ package com.lilayam.dellservertools.e2e
 
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.isOff
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -57,8 +59,14 @@ class BackupJobsE2ETest : ProxmoxE2ETestBase() {
         tap("backup-job-backup-1a2b")
         waitFor("backup-enabled")
         tap("backup-enabled")
+        waitUntil { compose.onAllNodes(hasTestTag("backup-enabled") and isOff()).fetchSemanticsNodes().isNotEmpty() }
+        waitUntil { compose.onAllNodes(hasTestTag("backup-save") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         tap("backup-save")
-        waitUntil { pve.lastCall("PUT", "/cluster/backup/backup-1a2b") != null }
+        try {
+            waitUntil { pve.lastCall("PUT", "/cluster/backup/backup-1a2b") != null }
+        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+            throw AssertionError("No PUT. Last calls: ${pve.calls.takeLast(6)}", e)
+        }
         assertEquals(mapOf("enabled" to "0"), pve.lastCall("PUT", "/cluster/backup/backup-1a2b")!!.params)
     }
 }
