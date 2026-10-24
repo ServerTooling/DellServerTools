@@ -1,5 +1,6 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
@@ -7,9 +8,11 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -20,8 +23,12 @@ class NodeDisksE2ETest : ProxmoxE2ETestBase() {
 
     private fun waitFor(tag: String) = waitUntil { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
 
-    private fun waitEnabled(tag: String) =
+    // A tap on a disabled button is dropped, and the previous change's snackbar can cover a button and swallow a real
+    // touch, so wait for it to be enabled and click through semantics.
+    private fun tapEnabled(tag: String) {
         waitUntil { compose.onAllNodes(hasTestTag(tag) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
+    }
 
     /** The tab's lazy list (the tab row scrolls too, but sideways and without indices). */
     private fun scrollTabTo(tag: String) {
@@ -51,8 +58,7 @@ class NodeDisksE2ETest : ProxmoxE2ETestBase() {
         waitFor("disk-sdc")
 
         scrollTabTo("disk-create-zfs")
-        waitEnabled("disk-create-zfs")
-        tap("disk-create-zfs")
+        tapEnabled("disk-create-zfs")
         type("disk-name", "tank")
         tap("disk-raid-single")
         tap("disk-create-go")
@@ -66,14 +72,13 @@ class NodeDisksE2ETest : ProxmoxE2ETestBase() {
         )
 
         scrollTabTo("vol-destroy-zfs-tank")
-        waitEnabled("vol-destroy-zfs-tank")
-        tap("vol-destroy-zfs-tank")
+        tapEnabled("vol-destroy-zfs-tank")
         type("destroy-confirm", "tank")
         tap("destroy-go")
         waitUntil { "tank" !in pve.diskVolumes.keys }
 
         scrollTabTo("disk-sdc")
-        tap("disk-sdc")
+        tapEnabled("disk-sdc")
         waitForText("SMART: PASSED")
         tap("disk-wipe")
         type("wipe-confirm", "sdc")
@@ -93,16 +98,14 @@ class NodeDisksE2ETest : ProxmoxE2ETestBase() {
         waitFor("cert-pveproxy-ssl.pem")
 
         scrollTabTo("acme-add")
-        waitEnabled("acme-add")
-        tap("acme-add")
+        tapEnabled("acme-add")
         type("acme-domain", "lab.example.org")
         tap("acme-plugin-example-dns")
         tap("acme-domain-save")
         waitUntil { pve.nodeConfig["acmedomain1"] == "domain=lab.example.org,plugin=example-dns" }
 
         scrollTabTo("acme-order")
-        waitEnabled("acme-order")
-        tap("acme-order")
+        tapEnabled("acme-order")
         confirmInDialog("Order")
         waitUntil { pve.lastCall("POST", "/nodes/pve/certificates/acme/certificate") != null }
     }
