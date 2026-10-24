@@ -1,14 +1,17 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.printToString
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -27,6 +30,15 @@ class VmHardwareE2ETest : ProxmoxE2ETestBase() {
         waitUntil { compose.onAllNodesWithTag("edit-submit").fetchSemanticsNodes().isNotEmpty() }
     }
 
+    /** Waits for [tag]; on a timeout the failure shows every window's tree, dialogs included. */
+    private fun waitForTag(tag: String) {
+        try {
+            waitUntil { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
+        } catch (e: ComposeTimeoutException) {
+            throw AssertionError("No $tag in:\n" + compose.onAllNodes(isRoot()).printToString(), e)
+        }
+    }
+
     @Test
     fun picksAnIsoAndAddsTpmUsbAndCloudInit() {
         openEditVm()
@@ -43,7 +55,7 @@ class VmHardwareE2ETest : ProxmoxE2ETestBase() {
 
         tap("dev-add")
         tap("dev-kind-usb")
-        waitUntil { compose.onAllNodesWithTag("dev-pick-0").fetchSemanticsNodes().isNotEmpty() }
+        waitForTag("dev-pick-0")
         compose.onNode(hasTestTag("dev-pick-0")).performClick()
 
         tap("ci-add")
