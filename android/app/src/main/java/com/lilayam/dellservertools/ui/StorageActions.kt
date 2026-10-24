@@ -543,7 +543,7 @@ fun PruneScreen(screen: Screen.Prune, vms: AppViewModels) {
     }
 }
 
-private val PRUNE_LABELS = listOf(
+internal val PRUNE_LABELS = listOf(
     "keep-last" to "Last",
     "keep-hourly" to "Hourly",
     "keep-daily" to "Daily",
@@ -699,7 +699,7 @@ fun StorageFormScreen(screen: Screen.StorageForm, vms: AppViewModels) {
     }
 }
 
-private fun PruneOptions.withCount(key: String, n: Int?): PruneOptions = when (key) {
+internal fun PruneOptions.withCount(key: String, n: Int?): PruneOptions = when (key) {
     "keep-last" -> copy(keepLast = n, keepAll = false)
     "keep-hourly" -> copy(keepHourly = n, keepAll = false)
     "keep-daily" -> copy(keepDaily = n, keepAll = false)

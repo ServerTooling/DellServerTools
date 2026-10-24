@@ -100,7 +100,7 @@ private fun statusColor(status: String): Color = when (status) {
 
 // ---------------------------------------------------------------- overview
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
     val vm = vms.proxmox
@@ -226,6 +226,15 @@ fun ProxmoxHomeScreen(profile: ServerProfile, vms: AppViewModels) {
             }
             // Last, so the guests stay on the first screen.
             if (state.connected) {
+                section("Datacenter")
+                item {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { vms.servers.navigate(Screen.BackupJobs(profile.id)) },
+                            modifier = Modifier.testTag("open-backup-jobs"),
+                        ) { Text("Backup jobs") }
+                    }
+                }
                 item {
                     OutlinedButton(
                         onClick = { vms.servers.navigate(Screen.Runners(profile.id)) },

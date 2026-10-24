@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.lilayam.dellservertools.core.ServerProfile
+import com.lilayam.dellservertools.core.proxmox.BackupJobForm
 import com.lilayam.dellservertools.core.proxmox.CloneRequest
 import com.lilayam.dellservertools.core.proxmox.DownloadUrlRequest
 import com.lilayam.dellservertools.core.proxmox.PruneOptions
@@ -433,6 +434,26 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             null
         }
     }
+
+    // ------------------------------------------------------------ backup jobs
+
+    fun saveBackupJob(form: BackupJobForm, onDone: () -> Unit) {
+        val label = if (form.isNew) "Add backup job" else "Update backup job ${form.id}"
+        runTask(label, "", refreshGuest = null, afterDone = onDone) { c ->
+            if (form.isNew) c.createBackupJob(form) else c.updateBackupJob(form)
+            null
+        }
+    }
+
+    fun deleteBackupJob(id: String, onDone: () -> Unit) =
+        runTask("Remove backup job $id", "", refreshGuest = null, afterDone = onDone) { c ->
+            c.deleteBackupJob(id)
+            null
+        }
+
+    /** Runs the job's backup now on [node] and follows the task. */
+    fun runBackupJob(node: String, form: BackupJobForm) =
+        runTask("Back up now (job ${form.id})", node, refreshGuest = null) { c -> c.runBackupJob(node, form) }
 
     fun deleteStorage(storage: String, onDone: () -> Unit) =
         runTask("Remove storage $storage", "", refreshGuest = null, afterDone = onDone) { c ->

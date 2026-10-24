@@ -60,6 +60,15 @@ class FakeProxmox : AutoCloseable {
     @Volatile
     var vmTemplate = false
 
+    /** Backup jobs of `/cluster/backup` as their JSON objects, keyed by id; POST adds, PUT edits, DELETE removes. */
+    val backupJobs = java.util.concurrent.ConcurrentHashMap(
+        mapOf(
+            "backup-1a2b" to """{"id":"backup-1a2b","type":"vzdump","schedule":"21:00","storage":"local","mode":"snapshot",
+                "compress":"zstd","all":1,"exclude":"200","enabled":1,"notes-template":"{{guestname}}","next-run":1792000000,
+                "prune-backups":{"keep-last":"3","keep-weekly":"2"}}""",
+        ),
+    )
+
     /** Keys pressed in VM 100 through the sendkey API, in order. */
     val sentKeys = CopyOnWriteArrayList<String>()
 
@@ -255,6 +264,21 @@ class FakeProxmox : AutoCloseable {
             )
             path.startsWith("/nodes/pve/storage/") && path.contains("/content") -> json("[]")
             path == "/cluster/nextid" -> json("\"201\"")
+            // ---- backup jobs
+            path == "/cluster/backup" && request.method == "GET" -> json(backupJobs.values.joinToString(",", "[", "]"))
+            path == "/cluster/backup" && request.method == "POST" -> {
+                val p = form(request)
+                val id = "backup-new${backupJobs.size}"
+                backupJobs[id] = org.json.JSONObject(p + ("id" to id) + ("type" to "vzdump")).toString()
+                json("null")
+            }
+            path.startsWith("/cluster/backup/") && request.method == "PUT" -> json("null")
+            path.startsWith("/cluster/backup/") && request.method == "DELETE" -> {
+                backupJobs.remove(path.removePrefix("/cluster/backup/"))
+                json("null")
+            }
+            path == "/cluster/backup-info/not-backed-up" -> json("""[{"vmid":200,"name":"gh-runner-1","type":"lxc"}]""")
+            path == "/nodes/pve/vzdump" && request.method == "POST" -> json("\"UPID:pve:00000040:vzdump::root@pam:\"")
             path.startsWith("/nodes/pve/network") -> json("""[{"iface":"vmbr0","type":"bridge"},{"iface":"vmbr1","type":"bridge"}]""")
             path == "/nodes/pve/aplinfo" && request.method == "GET" ->
                 json("""[{"template":"system/debian-12-standard_12.7-1_amd64.tar.zst","os":"debian-12","section":"system","description":"Debian 12"},{"template":"system/alpine-3.20-default_20240908_amd64.tar.xz","os":"alpine","section":"system","description":"Alpine"}]""")
