@@ -1,11 +1,15 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.isOff
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -61,12 +65,9 @@ class BackupJobsE2ETest : ProxmoxE2ETestBase() {
         tap("backup-enabled")
         waitUntil { compose.onAllNodes(hasTestTag("backup-enabled") and isOff()).fetchSemanticsNodes().isNotEmpty() }
         waitUntil { compose.onAllNodes(hasTestTag("backup-save") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
-        tap("backup-save")
-        try {
-            waitUntil { pve.lastCall("PUT", "/cluster/backup/backup-1a2b") != null }
-        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
-            throw AssertionError("No PUT. Last calls: ${pve.calls.takeLast(6)}", e)
-        }
+        // The "Add backup job: done" snackbar can still cover the button, which would take a touch; click it directly.
+        compose.onNodeWithTag("backup-save").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
+        waitUntil { pve.lastCall("PUT", "/cluster/backup/backup-1a2b") != null }
         assertEquals(mapOf("enabled" to "0"), pve.lastCall("PUT", "/cluster/backup/backup-1a2b")!!.params)
     }
 }
