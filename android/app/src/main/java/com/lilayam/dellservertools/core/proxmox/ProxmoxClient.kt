@@ -96,6 +96,21 @@ class ProxmoxClient(
 
     fun disks(node: String): List<PhysicalDisk> = ProxmoxJson.disks(get("/nodes/${enc(node)}/disks/list") as JSONArray)
 
+    // ---- VM hardware
+
+    /** USB devices plugged into the node, for passthrough. */
+    fun usbDevices(node: String): List<UsbDevice> =
+        VmHardware.usbDevices(get("/nodes/${enc(node)}/hardware/usb") as JSONArray)
+
+    /** PCI devices of the node (bridges and the like left out by Proxmox's default filter), for passthrough. */
+    fun pciDevices(node: String): List<PciDevice> =
+        VmHardware.pciDevices(get("/nodes/${enc(node)}/hardware/pci") as JSONArray)
+
+    /** Rebuilds a VM's cloud-init drive from its current cloud-init settings. */
+    fun regenerateCloudInit(node: String, vmid: Int) {
+        request("PUT", "${guestPath(node, GuestType.QEMU, vmid)}/cloudinit", emptyMap())
+    }
+
     // ---- storage management
 
     /** Deletes one volume (ISO, template, backup, unused disk). Returns the task UPID when it runs as a task. */

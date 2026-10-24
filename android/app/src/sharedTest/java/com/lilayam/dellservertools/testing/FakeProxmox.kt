@@ -142,6 +142,15 @@ class FakeProxmox : AutoCloseable {
         val status = if (vmRunning.get()) "running" else "stopped"
         return when {
             path == "/version" -> json("""{"version":"8.2.4","release":"8.2"}""")
+            // ---- VM hardware
+            path == "/nodes/pve/hardware/usb" -> json(
+                """[{"busnum":1,"devnum":1,"vendid":"0x1d6b","prodid":"0x0002","product":"EHCI Host Controller","class":9},
+                    {"busnum":1,"devnum":3,"vendid":"0x0781","prodid":"0x5581","manufacturer":"SanDisk","product":"Ultra","class":0}]""",
+            )
+            path == "/nodes/pve/hardware/pci" -> json(
+                """[{"id":"0000:04:00.0","vendor_name":"NVIDIA Corporation","device_name":"GP107","iommugroup":15,"class":"0x030000"}]""",
+            )
+            path == "/nodes/pve/qemu/100/cloudinit" && request.method == "PUT" -> json("null")
             // ---- storage management
             request.method == "DELETE" && path.startsWith("/nodes/pve/storage/local/content/") ->
                 json("\"UPID:pve:00000020:imgdel:local:root@pam:\"")

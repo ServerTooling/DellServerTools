@@ -121,12 +121,16 @@ data class GuestEdit(
         for (part in listOf("order", "up", "down")) {
             if (startup(part).isNotEmpty() && startup(part).toIntOrNull() == null) return "Startup $part must be a whole number"
         }
+        if (type == GuestType.QEMU && values["ipconfig0"] != current["ipconfig0"] && this["ipconfig0"].isNotEmpty()) {
+            IpConfig.parse(this["ipconfig0"]).validate()?.let { return it }
+        }
         for (key in values.keys + current.keys) {
             if (values[key] == current[key]) continue
             if (!KEY.matches(key)) return "\"$key\" is not a valid setting name"
             if (isReadOnly(key)) return "$key can't be changed here"
             if (key.startsWith("unused") && key in values) return "$key can only be removed"
-            if (isDisk(key) && key in current && key in values && diskSize(values[key]) != diskSize(current[key])) {
+            // A CD drive's size follows its ISO; only real disks must be grown instead.
+            if (isDisk(key) && key in current && key in values && !isCdrom(key) && diskSize(values[key]) != diskSize(current[key])) {
                 return "Use Grow disk to change the size of $key"
             }
         }

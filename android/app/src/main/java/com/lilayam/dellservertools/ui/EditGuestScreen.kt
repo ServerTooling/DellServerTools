@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.proxmox.GuestEdit
 import com.lilayam.dellservertools.core.proxmox.GuestType
+import com.lilayam.dellservertools.core.proxmox.VmHardware
 
 /** Keys with their own field in the typed sections, so "All settings" doesn't list them twice. */
 private val TYPED_KEYS = setOf(
@@ -161,7 +162,11 @@ fun EditGuestScreen(profile: ServerProfile, screen: Screen.EditGuest, vms: AppVi
                 NumField(e.startup("up"), { edit = e.withStartup("up", it.filter(Char::isDigit).take(5)) }, "Up delay s", Modifier.weight(1f))
                 NumField(e.startup("down"), { edit = e.withStartup("down", it.filter(Char::isDigit).take(5)) }, "Down timeout s", Modifier.weight(1f))
             }
-            if (!isCt) BootOrder(e) { edit = it }
+            if (!isCt) {
+                VmHardwareSection(e, opts?.vmStorages.orEmpty()) { edit = it }
+                BootOrder(e) { edit = it }
+                CdDrivesSection(e, opts?.isos.orEmpty(), onChange = { edit = it }, onRemove = { edit = e.without(it) })
+            }
             if (isCt) {
                 Section("DNS")
                 OutlinedTextField(
@@ -176,7 +181,8 @@ fun EditGuestScreen(profile: ServerProfile, screen: Screen.EditGuest, vms: AppVi
 
             Section(if (isCt) "Disks and mount points" else "Disks")
             val growable = e.growableDisks().toSet()
-            e.allKeys().filter { GuestEdit.isDisk(it) || it.startsWith("unused") }.forEach { key ->
+            // CD drives have their own section above, unless one was just removed (its Undo row stays here).
+            e.allKeys().filter { (GuestEdit.isDisk(it) && !(it in e.values && e.isCdrom(it))) || it.startsWith("unused") }.forEach { key ->
                 if (key !in e.values) {
                     RemovedRow(key) { edit = e.with(key, e.current.getValue(key)) }
                     return@forEach
@@ -211,10 +217,28 @@ fun EditGuestScreen(profile: ServerProfile, screen: Screen.EditGuest, vms: AppVi
                 modifier = Modifier.testTag("edit-add-net"),
             ) { Text("Add network interface") }
 
+            if (!isCt) {
+                DevicesSection(e, screen.node, opts?.vmStorages.orEmpty(), vms, onChange = { edit = it }) { key ->
+                    if (key in e.values) {
+                        RawRow(e, key, onChange = { edit = e.with(key, it) }, onRemove = { remove(key) })
+                    } else {
+                        RemovedRow(key) { edit = e.with(key, e.current.getValue(key)) }
+                    }
+                }
+                CloudInitSection(
+                    e,
+                    opts?.vmStorages.orEmpty(),
+                    canRegenerate = e.changedParams().isEmpty() && state.busy == null,
+                    onRegenerate = { vm.regenerateCloudInit(screen.node, screen.vmid) },
+                    onChange = { edit = it },
+                )
+            }
+
             Section("All settings")
             Note("Every other key of the guest config, as Proxmox stores it. Clear a value or tap the bin to remove it.")
             e.allKeys()
                 .filter { it !in TYPED_KEYS && !GuestEdit.isDisk(it) && !it.startsWith("unused") && !it.matches(Regex("net\\d+")) }
+                .filter { isCt || (it !in VM_TYPED_KEYS && !VmHardware.isDevice(it)) }
                 .forEach { key ->
                     if (key in e.values) {
                         RawRow(e, key, onChange = { edit = e.with(key, it) }, onRemove = { remove(key) })
@@ -294,17 +318,17 @@ fun EditGuestScreen(profile: ServerProfile, screen: Screen.EditGuest, vms: AppVi
 }
 
 @Composable
-private fun Section(title: String) {
+internal fun Section(title: String) {
     Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
 }
 
 @Composable
-private fun Note(text: String) {
+internal fun Note(text: String) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
-private fun RemovedRow(key: String, onUndo: () -> Unit) {
+internal fun RemovedRow(key: String, onUndo: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("$key: removed when you save", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = onUndo, modifier = Modifier.testTag("edit-undo-$key")) { Text("Undo") }
@@ -313,7 +337,7 @@ private fun RemovedRow(key: String, onUndo: () -> Unit) {
 
 /** One config key as text; read-only keys are shown as text with the reason. */
 @Composable
-private fun RawRow(e: GuestEdit, key: String, onChange: (String) -> Unit, onRemove: () -> Unit) {
+internal fun RawRow(e: GuestEdit, key: String, onChange: (String) -> Unit, onRemove: () -> Unit) {
     if (e.isReadOnly(key)) {
         Column {
             Text("$key: ${e[key]}", style = MaterialTheme.typography.bodySmall)

@@ -504,6 +504,13 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Rebuilds the VM's cloud-init drive from its saved settings. */
+    fun regenerateCloudInit(node: String, vmid: Int) =
+        runTask("Regenerate cloud-init of VM $vmid", node, Triple(node, GuestType.QEMU, vmid)) { c ->
+            c.regenerateCloudInit(node, vmid)
+            null
+        }
+
     /** Grows one disk or mount point by [gb] GiB. */
     fun resizeDisk(node: String, type: GuestType, vmid: Int, disk: String, gb: Int) =
         runTask("Grow $disk of ${type.label} $vmid by $gb GiB", node, Triple(node, type, vmid)) { c ->
