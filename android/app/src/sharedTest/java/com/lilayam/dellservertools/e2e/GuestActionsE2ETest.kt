@@ -81,10 +81,11 @@ class GuestActionsE2ETest : ProxmoxE2ETestBase() {
         waitUntil { pve.lastCall("POST", "/nodes/pve/qemu/100/snapshot") != null }
         assertEquals(mapOf("snapname" to "live", "vmstate" to "1"), pve.lastCall("POST", "/nodes/pve/qemu/100/snapshot")!!.params)
 
-        // Hibernate starts a task that keeps running until it is stopped from the busy bar.
-        pve.taskRunning = true
+        // Hibernate starts a task that keeps running until it is stopped from the busy bar. Only set that once the
+        // snapshot task has finished (Hibernate enabled again), or the snapshot task would never end either.
         compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Hibernate"))
         waitUntil { compose.onAllNodes(hasText("Hibernate") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        pve.taskRunning = true
         compose.onNode(hasText("Hibernate") and isEnabled()).performClick()
         confirmInDialog("Hibernate")
         waitUntil { pve.lastCall("POST", "/nodes/pve/qemu/100/status/suspend") != null }

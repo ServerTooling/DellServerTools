@@ -56,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -83,6 +84,7 @@ import com.lilayam.dellservertools.core.proxmox.PhysicalDisk
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val Green = Color(0xFF2E7D32)
 private val Amber = Color(0xFFF9A825)
@@ -745,6 +747,8 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
     var snapshotConfirm by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showDelete by remember { mutableStateOf(false) }
     var moveDisk by remember { mutableStateOf(false) }
+    var moveTargets by remember { mutableStateOf<Result<List<String>>?>(null) }
+    val scope = rememberCoroutineScope()
     var convertTemplate by remember { mutableStateOf(false) }
     val config = detail?.config.orEmpty().toMap()
     val isTemplate = config["template"] == "1"
@@ -878,7 +882,16 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                     OutlinedButton(onClick = { backupDialog = true }, enabled = state.busy == null) { Text("Back up now") }
                     if (detail?.config?.isNotEmpty() == true && MoveDiskRequest.movable(GuestEdit(screen.type, config)).isNotEmpty()) {
                         OutlinedButton(
-                            onClick = { moveDisk = true },
+                            onClick = {
+                                moveDisk = true
+                                moveTargets = null
+                                // Loaded from the tap, not from a LaunchedEffect in the dialog: under Robolectric that effect's result never
+                                // reached the dialog, while a scope launched from a click does (as in the download dialog).
+                                val content = if (screen.type == GuestType.QEMU) "images" else "rootdir"
+                                scope.launch {
+                                    moveTargets = vm.fetch { c -> c.storage(screen.node).filter { it.active && it.holds(content) }.map { it.storage } }
+                                }
+                            },
                             enabled = state.busy == null,
                             modifier = Modifier.testTag("guest-move-disk"),
                         ) { Text(if (screen.type == GuestType.QEMU) "Move disk" else "Move volume") }
@@ -1012,7 +1025,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
         )
     }
     if (moveDisk) {
-        MoveDiskDialog(screen.node, screen.type, screen.vmid, config, status?.isRunning == true, vms) { moveDisk = false }
+        MoveDiskDialog(screen.node, screen.type, screen.vmid, config, status?.isRunning == true, moveTargets, vms) { moveDisk = false }
     }
     if (convertTemplate) {
         TypedConfirmDialog(

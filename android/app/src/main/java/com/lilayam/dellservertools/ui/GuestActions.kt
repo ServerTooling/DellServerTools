@@ -17,7 +17,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +39,8 @@ internal fun MoveDiskDialog(
     vmid: Int,
     config: Map<String, String>,
     running: Boolean,
+    /** The node's storages that hold this guest type's disks; null while loading. */
+    targets: Result<List<String>>?,
     vms: AppViewModels,
     onDismiss: () -> Unit,
 ) {
@@ -49,14 +50,8 @@ internal fun MoveDiskDialog(
     var storage by remember { mutableStateOf("") }
     var format by remember { mutableStateOf("") }
     var deleteSource by remember { mutableStateOf(true) }
-    var storages by remember { mutableStateOf<List<String>?>(null) }
-    var loadError by remember { mutableStateOf<String?>(null) }
-    val content = if (type == GuestType.QEMU) "images" else "rootdir"
-    LaunchedEffect(node) {
-        vms.proxmox.fetch { c -> c.storage(node).filter { it.active && it.holds(content) }.map { it.storage } }
-            .onSuccess { storages = it }
-            .onFailure { loadError = it.message }
-    }
+    val storages = targets?.getOrNull()
+    val loadError = targets?.exceptionOrNull()?.let { it.message ?: "Couldn't load the storages." }
     val current = MoveDiskRequest.storageOf(config[disk].orEmpty())
     val request = MoveDiskRequest(type, disk, storage, deleteSource, format)
     // A container's volumes only move while it is stopped; a VM's move live.
