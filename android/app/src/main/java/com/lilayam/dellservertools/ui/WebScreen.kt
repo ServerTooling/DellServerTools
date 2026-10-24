@@ -6,6 +6,7 @@ import android.net.Uri
 import android.net.http.SslCertificate
 import android.net.http.SslError
 import android.os.Build
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
@@ -15,6 +16,7 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,9 +26,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -42,11 +48,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lilayam.dellservertools.core.ServerProfile
 import com.lilayam.dellservertools.core.ServerType
 import com.lilayam.dellservertools.core.proxmox.PinnedTls
+import com.lilayam.dellservertools.core.proxmox.VmKeys
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 
@@ -116,7 +125,16 @@ fun WebScreen(profile: ServerProfile, screen: Screen.Web, vms: AppViewModels) {
                 cookies.setCookie(proxmox.baseUrl, "PVEAuthCookie=${Uri.encode(ticket)}; Path=/; Secure")
                 cookies.flush()
             }
-            loadUrl(screen.url)
+            // Load once the view is laid out: a WebView loading while detached has a 0x0 window, and noVNC sizes
+            // (scales) the console from the window it sees when the framebuffer arrives.
+            addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+                override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int, oldL: Int, oldT: Int, oldR: Int, oldB: Int) {
+                    if (r - l > 0 && b - t > 0) {
+                        removeOnLayoutChangeListener(this)
+                        loadUrl(screen.url)
+                    }
+                }
+            })
         }
     }
 
@@ -141,6 +159,7 @@ fun WebScreen(profile: ServerProfile, screen: Screen.Web, vms: AppViewModels) {
                 IconButton(onClick = { if (webView.canGoBack()) webView.goBack() }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Page back")
                 }
+                screen.consoleVm?.let { ConsoleKeysMenu(it, vms) }
                 IconButton(onClick = { webView.reload() }) { Icon(Icons.Filled.Refresh, "Reload") }
                 if (screen.isMainUi) {
                     IconButton(onClick = {
@@ -159,8 +178,58 @@ fun WebScreen(profile: ServerProfile, screen: Screen.Web, vms: AppViewModels) {
                 }) { Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open in browser") }
             },
         )
+        if (screen.consoleVm != null) {
+            val state by proxmox.state.collectAsStateWithLifecycle()
+            ForwardMessages(state.message, vms) { proxmox.clearMessage() }
+            BusyBar(state.busy)
+        }
         if (progress in 1..99) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
         AndroidView(factory = { webView }, modifier = Modifier.weight(1f).fillMaxWidth())
+    }
+}
+
+/** Keys pressed through Proxmox's API, which work whatever the console page does with the phone keyboard. */
+@Composable
+private fun ConsoleKeysMenu(target: ConsoleVm, vms: AppViewModels) {
+    var open by remember { mutableStateOf(false) }
+    var confirmBoot by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.testTag("console-keys")) { Icon(Icons.Filled.Keyboard, "Send key") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            VmKeys.keys.forEach { key ->
+                DropdownMenuItem(
+                    text = { Text(key.label) },
+                    onClick = {
+                        open = false
+                        vms.proxmox.sendKey(target.node, target.vmid, key)
+                    },
+                    modifier = Modifier.testTag("console-key-${key.name}"),
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Reset and boot from CD") },
+                onClick = {
+                    open = false
+                    confirmBoot = true
+                },
+                modifier = Modifier.testTag("console-boot-cd"),
+            )
+        }
+    }
+    if (confirmBoot) {
+        ConfirmDialog(
+            title = "Reset VM ${target.vmid} and boot from CD?",
+            text = "Resets the VM (like pressing its reset button) and presses Enter for " +
+                "${VmKeys.BOOT_PRESS_WINDOW_MS / 1000} seconds, which answers \"Press any key to boot from CD or DVD\". " +
+                "The CD drive must be in the boot order.",
+            confirmLabel = "Reset",
+            onConfirm = {
+                confirmBoot = false
+                vms.proxmox.resetAndBootFromCd(target.node, target.vmid)
+            },
+            onDismiss = { confirmBoot = false },
+        )
     }
 }
 

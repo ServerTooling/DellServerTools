@@ -55,6 +55,56 @@ data class GuestEdit(
         return with("startup", listOf("order", "up", "down").mapNotNull { k -> parts[k]?.let { "$k=$it" } }.joinToString(","))
     }
 
+    /** VM devices that can boot: disks and CD drives (not EFI/TPM state) and network cards, `scsi0` before `scsi10`. */
+    fun bootDevices(): List<String> = values.keys.filter { BOOTABLE.matches(it) }.sortedWith(KEY_ORDER)
+
+    /**
+     * The VM's boot order, first device first. `boot: order=scsi0;ide2;net0` is today's format; older configs (and
+     * a missing `boot`, which means "cdn") list device kinds instead: c = `bootdisk` or the first disk, d = the CD
+     * drives, n = the network cards.
+     */
+    fun bootOrder(): List<String> {
+        val devices = bootDevices()
+        val boot = this["boot"]
+        if (boot.contains("order=")) {
+            return parseOptions(boot)["order"].orEmpty().split(';').map(String::trim).filter { it in devices }.distinct()
+        }
+        val disks = devices.filter { !it.startsWith("net") && !isCdrom(it) }
+        return (boot.ifEmpty { "cdn" }).flatMap { kind ->
+            when (kind) {
+                'c' -> listOfNotNull(this["bootdisk"].takeIf { it in disks } ?: disks.firstOrNull())
+                'd' -> devices.filter(::isCdrom)
+                'n' -> devices.filter { it.startsWith("net") }
+                else -> emptyList()
+            }
+        }.distinct()
+    }
+
+    /** Sets the boot order in the current format; the web interface needs at least one device, and so does this. */
+    fun withBootOrder(order: List<String>): GuestEdit =
+        if (order.isEmpty()) this else with("boot", "order=" + order.joinToString(";"))
+
+    /** Moves [device] one place earlier (-1) or later (+1) in the boot order. */
+    fun moveBootDevice(device: String, by: Int): GuestEdit {
+        val order = bootOrder().toMutableList()
+        val from = order.indexOf(device)
+        val to = from + by
+        if (from < 0 || to !in order.indices) return this
+        order.add(to, order.removeAt(from))
+        return withBootOrder(order)
+    }
+
+    /** Turns booting from [device] on (added last) or off. */
+    fun withBootDevice(device: String, on: Boolean): GuestEdit {
+        val order = bootOrder()
+        return withBootOrder(if (on) (order - device) + device else order - device)
+    }
+
+    fun isCdrom(key: String): Boolean = values[key].orEmpty().contains("media=cdrom")
+
+    /** Whether saving changes the boot order, which a running VM only picks up after a stop and start. */
+    val bootOrderChanged: Boolean get() = this["boot"] != current["boot"].orEmpty()
+
     fun validate(): String? {
         if (this[nameKey].isBlank()) return "Enter a ${if (type == GuestType.LXC) "hostname" else "name"}"
         val cores = this["cores"]
@@ -119,6 +169,7 @@ data class GuestEdit(
     companion object {
         private val KEY = Regex("[a-z][a-z0-9_-]*")
         private val KEY_ORDER = compareBy<String>({ it.trimEnd { c -> c.isDigit() } }, { it.takeLastWhile(Char::isDigit).toIntOrNull() ?: -1 })
+        private val BOOTABLE = Regex("^(scsi|virtio|sata|ide|net)\\d+$")
         private val DISK = Regex("^(rootfs|mp|scsi|virtio|sata|ide|efidisk|tpmstate)(\\d*)$")
         private val READ_ONLY_COMMON = setOf("digest", "template", "lock", "parent", "snaptime")
         private val READ_ONLY_LXC = setOf("unprivileged", "lxc")

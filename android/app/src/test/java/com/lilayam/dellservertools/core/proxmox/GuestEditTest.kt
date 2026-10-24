@@ -121,4 +121,52 @@ class GuestEditTest {
     fun `grow size is relative`() {
         assertEquals("+8G", GuestEdit.growBy(8))
     }
+
+    private val win11 = mapOf(
+        "name" to "vm-100", "boot" to "order=scsi0;net0",
+        "scsi0" to "local-zfs:vm-100-disk-1,size=64G",
+        "ide2" to "local_2tb:iso/Windows11.iso,media=cdrom,size=7G",
+        "net0" to "virtio=BC:24:11:00:00:01,bridge=vmbr4,firewall=1",
+        "efidisk0" to "local-zfs:vm-100-disk-0,efitype=4m",
+    )
+
+    @Test
+    fun `boot devices are disks, CD drives and NICs but not the EFI disk`() {
+        val e = GuestEdit(GuestType.QEMU, win11)
+        assertEquals(listOf("ide2", "net0", "scsi0"), e.bootDevices())
+        assertEquals(listOf("scsi0", "net0"), e.bootOrder())
+        assertTrue(e.isCdrom("ide2"))
+    }
+
+    @Test
+    fun `moving the CD drive first sends the whole order`() {
+        val e = GuestEdit(GuestType.QEMU, win11).withBootDevice("ide2", true).moveBootDevice("ide2", -1).moveBootDevice("ide2", -1)
+        assertEquals(listOf("ide2", "scsi0", "net0"), e.bootOrder())
+        assertEquals(mapOf("boot" to "order=ide2;scsi0;net0"), e.changedParams())
+        assertTrue(e.bootOrderChanged)
+    }
+
+    @Test
+    fun `moves past either end and turning off the last device change nothing`() {
+        val e = GuestEdit(GuestType.QEMU, win11)
+        assertEquals(e, e.moveBootDevice("scsi0", -1))
+        assertEquals(e, e.moveBootDevice("net0", 1))
+        assertEquals(e, e.moveBootDevice("ide2", 1))  // not in the order
+        val single = e.withBootDevice("net0", false)
+        assertEquals(listOf("scsi0"), single.bootOrder())
+        assertEquals(single, single.withBootDevice("scsi0", false))
+        assertFalse(GuestEdit(GuestType.QEMU, win11).bootOrderChanged)
+    }
+
+    @Test
+    fun `legacy boot letters and a missing boot key are read as devices`() {
+        val legacy = win11 - "boot" + ("scsi1" to "local-zfs:vm-100-disk-2,size=8G")
+        assertEquals(listOf("scsi0", "ide2", "net0"), GuestEdit(GuestType.QEMU, legacy).bootOrder())
+        assertEquals(
+            listOf("ide2", "scsi1"),
+            GuestEdit(GuestType.QEMU, legacy + ("boot" to "dc") + ("bootdisk" to "scsi1")).bootOrder(),
+        )
+        // Devices that no longer exist are dropped from a stored order.
+        assertEquals(listOf("scsi0"), GuestEdit(GuestType.QEMU, win11 + ("boot" to "order=sata3;scsi0")).bootOrder())
+    }
 }
