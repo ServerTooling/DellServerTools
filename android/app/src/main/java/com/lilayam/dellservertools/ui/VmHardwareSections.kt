@@ -17,10 +17,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -33,6 +33,7 @@ import com.lilayam.dellservertools.core.proxmox.PciDevice
 import com.lilayam.dellservertools.core.proxmox.TemplateFile
 import com.lilayam.dellservertools.core.proxmox.UsbDevice
 import com.lilayam.dellservertools.core.proxmox.VmHardware
+import kotlinx.coroutines.launch
 
 /** Config keys the typed VM sections below edit, so "All settings" doesn't list them twice. */
 internal val VM_TYPED_KEYS = setOf(
@@ -129,6 +130,11 @@ private fun AddDeviceDialog(
     onAdd: (GuestEdit) -> Unit,
 ) {
     var kind by remember { mutableStateOf<DeviceKind?>(null) }
+    // Loaded from the tap that opens the picker, not from a LaunchedEffect in it: under Robolectric the effect's
+    // result never reached the dialog, while a scope launched from a click does (as in the download dialog).
+    val scope = rememberCoroutineScope()
+    var usb by remember { mutableStateOf<Result<List<UsbDevice>>?>(null) }
+    var pci by remember { mutableStateOf<Result<List<PciDevice>>?>(null) }
     when (kind) {
         null -> AlertDialog(
             onDismissRequest = onDismiss,
@@ -148,6 +154,14 @@ private fun AddDeviceDialog(
                                     DeviceKind.SERIAL -> onAdd(e.with(e.nextKey("serial"), VmHardware.SERIAL))
                                     DeviceKind.RNG -> onAdd(e.with("rng0", VmHardware.RNG))
                                     DeviceKind.AUDIO -> onAdd(e.with("audio0", VmHardware.AUDIO))
+                                    DeviceKind.USB -> {
+                                        kind = k
+                                        scope.launch { usb = vms.proxmox.fetch { c -> c.usbDevices(node) } }
+                                    }
+                                    DeviceKind.PCI -> {
+                                        kind = k
+                                        scope.launch { pci = vms.proxmox.fetch { c -> c.pciDevices(node) } }
+                                    }
                                     else -> kind = k
                                 }
                             },
@@ -165,13 +179,12 @@ private fun AddDeviceDialog(
         }
         DeviceKind.USB -> HostDevicePicker(
             title = "USB device",
-            load = { c -> c.usbDevices(node) },
-            vms = vms,
+            devices = usb,
             onDismiss = onDismiss,
             describe = { d: UsbDevice -> "${d.name.ifEmpty { "Unknown device" }} (${d.vendorId}:${d.productId})" },
             note = "Passed through by vendor and product ID, so it keeps working on another USB port.",
         ) { d -> onAdd(e.with(e.nextKey("usb"), VmHardware.usb(d))) }
-        DeviceKind.PCI -> PciPicker(e, node, vms, onDismiss, onAdd)
+        DeviceKind.PCI -> PciPicker(e, pci, onDismiss, onAdd)
         // Added straight from the list above, no second dialog.
         DeviceKind.SERIAL, DeviceKind.RNG, DeviceKind.AUDIO -> Unit
     }
@@ -181,19 +194,14 @@ private fun AddDeviceDialog(
 @Composable
 private fun <T> HostDevicePicker(
     title: String,
-    load: (com.lilayam.dellservertools.core.proxmox.ProxmoxClient) -> List<T>,
-    vms: AppViewModels,
+    devices: Result<List<T>>?,
     onDismiss: () -> Unit,
     describe: (T) -> String,
     note: String,
     extra: @Composable () -> Unit = {},
     onPick: (T) -> Unit,
 ) {
-    var devices by remember { mutableStateOf<List<T>?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        vms.proxmox.fetch(load).onSuccess { devices = it }.onFailure { error = it.message }
-    }
+    val error = devices?.exceptionOrNull()?.let { it.message ?: "Couldn't load the devices." }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -201,7 +209,7 @@ private fun <T> HostDevicePicker(
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Note(note)
                 extra()
-                val list = devices
+                val list = devices?.getOrNull()
                 when {
                     error != null -> Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
                     list == null -> Text("Loading…")
@@ -221,14 +229,13 @@ private fun <T> HostDevicePicker(
 }
 
 @Composable
-private fun PciPicker(e: GuestEdit, node: String, vms: AppViewModels, onDismiss: () -> Unit, onAdd: (GuestEdit) -> Unit) {
+private fun PciPicker(e: GuestEdit, devices: Result<List<PciDevice>>?, onDismiss: () -> Unit, onAdd: (GuestEdit) -> Unit) {
     var allFunctions by remember { mutableStateOf(true) }
     // PCI-Express needs the q35 machine.
     var pcie by remember { mutableStateOf(e["machine"].contains("q35")) }
     HostDevicePicker(
         title = "PCI device",
-        load = { c -> c.pciDevices(node) },
-        vms = vms,
+        devices = devices,
         onDismiss = onDismiss,
         describe = { d: PciDevice -> "${d.id} ${d.name}" + if (d.iommuGroup >= 0) " (IOMMU group ${d.iommuGroup})" else "" },
         note = "Needs IOMMU enabled on the host. The VM can't be snapshotted with RAM or migrated while it has the device.",
