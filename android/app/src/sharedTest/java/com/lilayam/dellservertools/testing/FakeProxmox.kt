@@ -1,5 +1,6 @@
 package com.lilayam.dellservertools.testing
 
+import com.lilayam.dellservertools.core.proxmox.PinnedTls
 import java.net.InetAddress
 import java.net.URLDecoder
 import java.util.concurrent.CopyOnWriteArrayList
@@ -55,6 +56,14 @@ class FakeProxmox : AutoCloseable {
     /** Adds a second storage for disks and containers, as a target for moving disks. */
     @Volatile
     var extraImageStorage = false
+
+    /** Disks: what the create calls built (name to kind) and the fingerprint of an uploaded custom certificate. */
+    val diskVolumes = java.util.concurrent.ConcurrentHashMap<String, String>()
+    @Volatile var customCertificate: String? = null
+
+    /** `/nodes/pve/config` (ACME settings) and the registered ACME accounts. */
+    val nodeConfig = java.util.concurrent.ConcurrentHashMap(mapOf("acme" to "account=default", "acmedomain0" to "domain=pve.example.org"))
+    val acmeAccounts = CopyOnWriteArrayList(listOf("default"))
 
     /** Whether VM 100 has been converted to a template. */
     @Volatile
@@ -302,8 +311,11 @@ class FakeProxmox : AutoCloseable {
             )
             path == "/nodes/pve/disks/list" -> json(
                 """[{"devpath":"/dev/sda","model":"TEST SSD","type":"ssd","size":256060514304,"health":"PASSED","wearout":97,"used":"ZFS"},
-                    {"devpath":"/dev/sdb","model":"TEST HDD","type":"hdd","size":2000398934016,"health":"PASSED","wearout":"N/A","used":"ZFS"}]""",
+                    {"devpath":"/dev/sdb","model":"TEST HDD","type":"hdd","size":2000398934016,"health":"PASSED","wearout":"N/A","used":"ZFS"},
+                    {"devpath":"/dev/sdc","model":"SPARE HDD","type":"hdd","size":4000787030016,"health":"PASSED","wearout":"N/A"}]""",
             )
+            path.startsWith("/nodes/pve/disks/") || path.startsWith("/nodes/pve/certificates") ||
+                path.substringBefore('?') == "/nodes/pve/config" || path.startsWith("/cluster/acme") -> nodeAdmin(request, path)
             path.startsWith("/nodes/pve/storage/") && path.contains("/content") -> json("[]")
             path == "/cluster/nextid" -> json("\"201\"")
             path.contains("/firewall") -> firewall(request, path.substringBefore('?'))
@@ -429,6 +441,87 @@ class FakeProxmox : AutoCloseable {
                 """[{"upid":"UPID:pve:00000001:qmstart:100:root@pam:","node":"pve","type":"qmstart","id":"100","user":"root@pam","starttime":1700000000,"endtime":1700000001,"status":"OK"}]""",
             )
             else -> error(501, "Method '$path' not implemented in FakeProxmox")
+        }
+    }
+
+    private fun nodeAdmin(request: RecordedRequest, fullPath: String): MockResponse {
+        val method = request.method.orEmpty()
+        val path = fullPath.substringBefore('?')
+        val upid = json("\"UPID:pve:00000060:disk::root@pam:\"")
+        val kinds = listOf("zfs", "lvm", "lvmthin", "directory")
+        fun created(kind: String) = diskVolumes.filterValues { it == kind }.keys.sorted()
+        return when {
+            path == "/nodes/pve/disks/smart" -> json(
+                """{"health":"PASSED","type":"ata","attributes":[
+                  {"id":"  5","name":"Reallocated_Sector_Ct","value":100,"worst":100,"threshold":10,"raw":"0","fail":"-"},
+                  {"id":"194","name":"Temperature_Celsius","value":64,"worst":50,"threshold":0,"raw":"36","fail":"-"}]}""",
+            )
+            path == "/nodes/pve/disks/wipedisk" && method == "PUT" -> upid
+            path == "/nodes/pve/disks/initgpt" && method == "POST" -> upid
+            path == "/nodes/pve/disks/zfs" && method == "GET" -> json(
+                (listOf("""{"name":"rpool","size":2000000000000,"alloc":500000000000,"free":1500000000000,"health":"ONLINE","frag":3}""") +
+                    created("zfs").map { """{"name":"$it","size":4000000000000,"alloc":0,"free":4000000000000,"health":"ONLINE","frag":0}""" })
+                    .joinToString(",", "[", "]"),
+            )
+            path == "/nodes/pve/disks/lvm" && method == "GET" -> json(
+                created("lvm").joinToString(",", """{"leaf":0,"children":[""", "]}") {
+                    """{"name":"$it","size":4000000000000,"free":4000000000000,"children":[{"name":"/dev/sdc1"}]}"""
+                },
+            )
+            path == "/nodes/pve/disks/lvmthin" && method == "GET" ->
+                json(created("lvmthin").joinToString(",", "[", "]") { """{"lv":"$it","vg":"$it","lv_size":1000,"used":0}""" })
+            path == "/nodes/pve/disks/directory" && method == "GET" -> json(
+                created("directory").joinToString(",", "[", "]") {
+                    """{"path":"/mnt/pve/$it","device":"/dev/sdc1","type":"ext4","options":"defaults"}"""
+                },
+            )
+            method == "POST" && path.removePrefix("/nodes/pve/disks/") in kinds -> {
+                diskVolumes[form(request).getValue("name")] = path.removePrefix("/nodes/pve/disks/")
+                upid
+            }
+            method == "DELETE" && path.startsWith("/nodes/pve/disks/") -> {
+                diskVolumes.remove(path.substringAfterLast('/'))
+                upid
+            }
+            path == "/nodes/pve/certificates/info" -> json(
+                listOfNotNull(
+                    """{"filename":"pve-root-ca.pem","fingerprint":"AA:AA","subject":"/CN=Proxmox Virtual Environment","issuer":"/CN=Proxmox Virtual Environment","notbefore":1700000000,"notafter":2000000000}""",
+                    """{"filename":"pve-ssl.pem","fingerprint":"${PinnedTls.fingerprint(certificate.certificate)}","subject":"/CN=pve.example.org","issuer":"/CN=Proxmox Virtual Environment","notbefore":1700000000,"notafter":2000000000,"san":["127.0.0.1","pve.example.org"]}""",
+                    customCertificate?.let {
+                        """{"filename":"pveproxy-ssl.pem","fingerprint":"$it","subject":"/CN=pve.example.org","issuer":"/CN=Example CA","notbefore":1700000000,"notafter":2000000000,"san":["pve.example.org"]}"""
+                    },
+                ).joinToString(",", "[", "]"),
+            )
+            path == "/nodes/pve/certificates/custom" && method == "POST" -> {
+                customCertificate = "CC:CC:CC"
+                json("""{"filename":"pveproxy-ssl.pem","fingerprint":"CC:CC:CC","subject":"/CN=pve.example.org","issuer":"/CN=Example CA","notbefore":1700000000,"notafter":2000000000}""")
+            }
+            path == "/nodes/pve/certificates/custom" && method == "DELETE" -> {
+                customCertificate = null
+                json("null")
+            }
+            path == "/nodes/pve/certificates/acme/certificate" -> {
+                customCertificate = "DD:DD:DD"
+                json("\"UPID:pve:00000061:acmenewcert::root@pam:\"")
+            }
+            path == "/nodes/pve/config" && method == "GET" ->
+                json(org.json.JSONObject(nodeConfig + ("digest" to "cfg1")).toString())
+            path == "/nodes/pve/config" && method == "PUT" -> {
+                val p = form(request)
+                p["delete"]?.split(',')?.forEach { nodeConfig.remove(it) }
+                nodeConfig.putAll(p - "delete" - "digest")
+                json("null")
+            }
+            path == "/cluster/acme/account" && method == "GET" -> json(acmeAccounts.joinToString(",", "[", "]") { """{"name":"$it"}""" })
+            path == "/cluster/acme/account" && method == "POST" -> {
+                acmeAccounts += form(request).getValue("name")
+                json("\"UPID:pve:00000062:acmeregister::root@pam:\"")
+            }
+            path == "/cluster/acme/directories" -> json("""[{"name":"Example CA","url":"https://acme.example.org/directory"}]""")
+            path == "/cluster/acme/tos" -> json("\"https://acme.example.org/terms.pdf\"")
+            path == "/cluster/acme/plugins" ->
+                json("""[{"plugin":"standalone","type":"standalone"},{"plugin":"example-dns","type":"dns","api":"cf"}]""")
+            else -> error(501, "node admin $method $path")
         }
     }
 

@@ -117,7 +117,7 @@ class ProxmoxClientIntegrationTest {
         assertEquals(listOf("pool" to "rpool/data", "sparse" to "1"), c.storageConfig("local-zfs"))
         assertEquals(listOf(100, 200), c.storageContent("pve", "local-zfs").map { it.vmid })
         assertEquals(listOf("rpool", "mirror-0", "sda3", "sdb3"), c.zfsPool("pve", "rpool").devices.map { it.name })
-        assertEquals(listOf("/dev/sda", "/dev/sdb"), c.disks("pve").map { it.devPath })
+        assertEquals(listOf("/dev/sda", "/dev/sdb", "/dev/sdc"), c.disks("pve").map { it.devPath })
 
         // The content listing is unfiltered: every type the storage holds.
         assertNull(pve.requestsTo("/nodes/pve/storage/local-zfs/content").single().requestUrl!!.queryParameter("content"))

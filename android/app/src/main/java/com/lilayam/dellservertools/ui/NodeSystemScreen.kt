@@ -57,10 +57,11 @@ import com.lilayam.dellservertools.core.proxmox.NetworkInterface
 import com.lilayam.dellservertools.core.proxmox.NodeSystemJson
 
 private enum class SystemTab(val label: String) {
-    NETWORK("Network"), DNS("DNS & time"), HOSTS("Hosts"), SERVICES("Services"), UPDATES("Updates"), REPOS("Repositories"), SYSLOG("Syslog")
+    NETWORK("Network"), DNS("DNS & time"), HOSTS("Hosts"), SERVICES("Services"), UPDATES("Updates"), REPOS("Repositories"), SYSLOG("Syslog"),
+    DISKS("Disks"), CERTS("Certificates"),
 }
 
-/** A node's System, Network and Updates panels of the web UI, one tab at a time. */
+/** A node's System, Network, Updates, Disks and Certificates panels of the web UI, one tab at a time. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NodeSystemScreen(profile: ServerProfile, screen: Screen.NodeSystem, vms: AppViewModels) {
@@ -99,6 +100,8 @@ fun NodeSystemScreen(profile: ServerProfile, screen: Screen.NodeSystem, vms: App
                 SystemTab.UPDATES -> UpdatesTab(profile, node, vms, version, busy, reload)
                 SystemTab.REPOS -> ReposTab(node, vms, version, busy, reload)
                 SystemTab.SYSLOG -> SyslogTab(node, vms, version)
+                SystemTab.DISKS -> DisksTab(node, vms, version, busy, reload)
+                SystemTab.CERTS -> CertificatesTab(node, vms, version, busy, reload)
             }
         }
     }

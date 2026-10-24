@@ -311,6 +311,73 @@ class ProxmoxClient(
     fun journal(node: String, lines: Int = 500): List<String> =
         NodeSystemJson.journal(get("/nodes/${enc(node)}/journal?lastentries=$lines") as JSONArray)
 
+    // ---- node disks: SMART, wipe, GPT, LVM / LVM-thin / directory / ZFS
+
+    fun smart(node: String, disk: String): SmartData =
+        SmartData.parse(get("/nodes/${enc(node)}/disks/smart?disk=${enc(disk)}") as JSONObject)
+
+    /** Wipes the partition table and signatures of [disk]. Returns the task UPID. */
+    fun wipeDisk(node: String, disk: String): String? = put("/nodes/${enc(node)}/disks/wipedisk", mapOf("disk" to disk)) as? String
+
+    /** Returns the task UPID. */
+    fun initGpt(node: String, disk: String): String? = post("/nodes/${enc(node)}/disks/initgpt", mapOf("disk" to disk)) as? String
+
+    /** Everything built on the node's disks, from all four panels; a panel the node can't list is left out. */
+    fun diskVolumes(node: String): List<DiskVolume> {
+        val base = "/nodes/${enc(node)}/disks"
+        return listOf(
+            { DiskVolume.zfs(get("$base/zfs") as JSONArray) },
+            { DiskVolume.lvm(get("$base/lvm") as JSONObject) },
+            { DiskVolume.lvmThin(get("$base/lvmthin") as JSONArray) },
+            { DiskVolume.directories(get("$base/directory") as JSONArray) },
+        ).flatMap { runCatching(it).getOrDefault(emptyList()) }
+    }
+
+    /** Returns the task UPID. */
+    fun createDiskVolume(node: String, form: DiskCreateForm): String? =
+        post("/nodes/${enc(node)}/disks/${form.kind.path}", form.params()) as? String
+
+    /** Destroys it, removes its storage entry and wipes its disks. Returns the task UPID. */
+    fun destroyDiskVolume(node: String, volume: DiskVolume): String? = delete(volume.destroyPath(node, ::enc)) as? String
+
+    // ---- node certificates: custom upload and ACME
+
+    fun certificates(node: String): List<CertificateInfo> =
+        CertificateInfo.list(get("/nodes/${enc(node)}/certificates/info") as JSONArray)
+
+    /** Installs a custom certificate and restarts pveproxy; returns the new certificate's details. */
+    fun uploadCertificate(node: String, form: CustomCertificateForm): CertificateInfo? =
+        (post("/nodes/${enc(node)}/certificates/custom", form.params()) as? JSONObject)?.let(CertificateInfo::parse)
+
+    /** Removes the custom certificate, so pveproxy serves Proxmox's own again. */
+    fun deleteCustomCertificate(node: String) {
+        delete("/nodes/${enc(node)}/certificates/custom?restart=1")
+    }
+
+    fun acmeSettings(node: String): AcmeSettings = AcmeSettings.parse(get("/nodes/${enc(node)}/config") as JSONObject)
+
+    fun setNodeConfig(node: String, params: Map<String, String>) {
+        put("/nodes/${enc(node)}/config", params)
+    }
+
+    fun acmeAccounts(): List<String> = AcmeJson.accounts(get("/cluster/acme/account") as JSONArray)
+
+    fun acmeDirectories(): List<AcmeDirectory> = AcmeJson.directories(get("/cluster/acme/directories") as JSONArray)
+
+    /** The URL of the directory's terms of service, which registering accepts. */
+    fun acmeTermsOfService(directory: String): String = get("/cluster/acme/tos?directory=${enc(directory)}")?.toString().orEmpty()
+
+    fun acmeDnsPlugins(): List<String> = AcmeJson.dnsPlugins(get("/cluster/acme/plugins") as JSONArray)
+
+    /** Returns the task UPID. */
+    fun registerAcmeAccount(form: AcmeAccountForm): String? = post("/cluster/acme/account", form.params()) as? String
+
+    /** Orders a certificate for the node's ACME domains, or renews it ([renew]). Returns the task UPID. */
+    fun orderAcmeCertificate(node: String, renew: Boolean): String? {
+        val path = "/nodes/${enc(node)}/certificates/acme/certificate"
+        return (if (renew) put(path, mapOf("force" to "1")) else post(path, emptyMap())) as? String
+    }
+
     // ---- firewall (datacenter, node, guest and security groups)
 
     fun firewallRules(scope: FirewallScope): List<FirewallRule> = FirewallRule.parse(get(scope.rulesPath) as JSONArray)

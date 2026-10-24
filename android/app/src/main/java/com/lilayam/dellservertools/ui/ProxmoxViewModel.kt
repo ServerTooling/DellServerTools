@@ -206,6 +206,25 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         retry()
     }
 
+    /**
+     * Certificates the app itself just installed (uploaded, or Proxmox's own after removing a custom one). The next
+     * handshake that presents one is trusted without asking, since it came over the already pinned connection.
+     */
+    private val expectedCertificates = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    fun expectCertificate(fingerprint: String) {
+        if (fingerprint.isNotBlank()) expectedCertificates += fingerprint.uppercase()
+    }
+
+    /** After pveproxy restarted with another certificate: reconnect once it is back, trusting [fingerprint] if it shows. */
+    fun reconnectWithCertificate(fingerprint: String?) {
+        fingerprint?.let(::expectCertificate)
+        viewModelScope.launch {
+            delay(RESTART_WAIT_MS)
+            retry()
+        }
+    }
+
     fun rejectCertificate() =
         _state.update { it.copy(certPrompt = null, loading = false, error = "Certificate not trusted.") }
 
@@ -666,10 +685,17 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
 
     private fun handleFailure(c: ProxmoxClient, e: Throwable) {
         val cert = c.rejectedCertificate
+        val certFailure = cert != null && generateSequence(e) { it.cause }.any { it is SSLException || it is UntrustedCertificateException }
+        val p = profile
+        if (certFailure && p != null && expectedCertificates.remove(cert!!.fingerprint)) {
+            trust.save(TrustStore.tlsId(p.host, p.port), cert.fingerprint)
+            retry()
+            return
+        }
         when {
-            cert != null && generateSequence(e) { it.cause }.any { it is SSLException || it is UntrustedCertificateException } ->
+            certFailure ->
                 _state.update {
-                    it.copy(loading = false, connected = false, certPrompt = FingerprintPrompt(cert.fingerprint, cert.changed))
+                    it.copy(loading = false, connected = false, certPrompt = FingerprintPrompt(cert!!.fingerprint, cert.changed))
                 }
             e is ProxmoxApiException && e.httpStatus == 401 && !_state.value.connected ->
                 _state.update { it.copy(loading = false, authFailed = true, error = describe(e)) }
@@ -693,5 +719,6 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
 
     private companion object {
         const val TASK_WAIT_MS = 5 * 60 * 1000L
+        const val RESTART_WAIT_MS = 3_000L
     }
 }
