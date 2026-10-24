@@ -435,8 +435,6 @@ fun StorageScreen(screen: Screen.Storage, vms: AppViewModels) {
                     }
                 }
             }
-            // The storage.cfg entry only loads with Datastore.Allocate, which editing needs too.
-            item { StorageActions(screen, status.content, editable = detail.config.isNotEmpty(), vms) }
             detail.zfs?.let { zfs ->
                 section("ZFS pool ${zfs.name}")
                 item {
@@ -476,6 +474,10 @@ fun StorageScreen(screen: Screen.Storage, vms: AppViewModels) {
                     }
                 }
             }
+            // Below the details, so the summary and configuration stay on the first screen.
+            // The storage.cfg entry only loads with Datastore.Allocate, which editing needs too.
+            section("Actions")
+            item { StorageActions(screen, status.content, editable = detail.config.isNotEmpty(), vms) }
             detail.volumes.groupBy { it.content }.forEach { (content, volumes) ->
                 section("${contentLabel(content)} (${volumes.size}, ${Format.bytes(volumes.sumOf { it.size })})")
                 items(volumes, key = { it.volid }) { v ->

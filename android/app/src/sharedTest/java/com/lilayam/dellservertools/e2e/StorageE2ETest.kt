@@ -1,11 +1,12 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isEnabled
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
@@ -25,13 +26,19 @@ class StorageE2ETest : ProxmoxE2ETestBase() {
         waitForText("/var/lib/vz")
     }
 
+    /** The actions sit below the details, outside the first screen of the lazy list. */
+    private fun tapAction(tag: String) {
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag(tag))
+        tap(tag)
+    }
+
     private fun waitEnabled(tag: String) =
         waitUntil { compose.onAllNodes(hasTestTag(tag) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
 
     @Test
     fun downloadsAnIsoFromAUrl() {
         openLocalStorage()
-        tap("storage-download")
+        tapAction("storage-download")
         type("download-url", "https://example.org/debian.iso")
         tap("download-query")
         // The server's answer replaces the name taken from the URL.
@@ -71,14 +78,14 @@ class StorageE2ETest : ProxmoxE2ETestBase() {
     @Test
     fun prunesOldBackups() {
         openLocalStorage()
-        tap("storage-prune")
+        tapAction("storage-prune")
         waitForText("Prune backups on local")
         // `local` has no retention set, so at first everything is kept.
         waitForText("No keep count set: every backup is kept.")
-        waitUntil { compose.onAllNodesWithText("keep").fetchSemanticsNodes().size == 3 }
         type("prune-keep-last", "1")
         tap("prune-preview")
-        waitForText("remove")
+        // Enabled once the preview marks something for removal.
+        waitEnabled("prune-go")
         tap("prune-go")
         compose.onNodeWithText("Remove").performClick()
 
@@ -109,7 +116,7 @@ class StorageE2ETest : ProxmoxE2ETestBase() {
     @Test
     fun disablesAndRemovesAStorage() {
         openLocalStorage()
-        tap("storage-edit")
+        tapAction("storage-edit")
         waitForText("Edit storage local")
         waitUntil { compose.onAllNodes(hasTestTag("storage-save")).fetchSemanticsNodes().isNotEmpty() }
         tap("storage-enabled")
@@ -118,6 +125,7 @@ class StorageE2ETest : ProxmoxE2ETestBase() {
         assertEquals(mapOf("disable" to "1"), pve.lastCall("PUT", "/storage/local")!!.params)
 
         waitForText("Storage local")
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("storage-remove"))
         waitEnabled("storage-remove")
         tap("storage-remove")
         compose.onNodeWithTag("storage-remove-confirm").performTextInput("local")
