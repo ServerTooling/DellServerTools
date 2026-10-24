@@ -32,7 +32,10 @@ class BackupJobsE2ETest : ProxmoxE2ETestBase() {
     fun runsAJobAndShowsGuestsWithoutBackups() {
         openBackupJobs()
         waitForText("All guests except 200 → local")
-        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag("unprotected-200"))
+        // The guests without backups load after the jobs, so the scroll is retried until the row exists.
+        waitUntil {
+            runCatching { compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag("unprotected-200")) }.isSuccess
+        }
 
         compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag("backup-run-backup-1a2b"))
         tap("backup-run-backup-1a2b")
