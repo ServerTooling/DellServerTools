@@ -36,11 +36,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +60,7 @@ import com.lilayam.dellservertools.core.proxmox.PveGroup
 import com.lilayam.dellservertools.core.proxmox.PvePool
 import com.lilayam.dellservertools.core.proxmox.PveRole
 import com.lilayam.dellservertools.core.proxmox.UserForm
+import kotlinx.coroutines.launch
 
 private enum class PermTab(val label: String) {
     USERS("Users"), GROUPS("Groups"), TOKENS("API tokens"), ACL("Permissions"), ROLES("Roles"), POOLS("Pools"), TFA("Two-factor")
@@ -684,6 +685,8 @@ private fun PoolsTab(vms: AppViewModels, version: Int, busy: Boolean, reload: ()
     val (pools, error) = rememberLoaded(vms, version) { it.pools() }
     var adding by remember { mutableStateOf(false) }
     var opened by remember { mutableStateOf<String?>(null) }
+    var detail by remember { mutableStateOf<Result<PvePool>?>(null) }
+    val scope = rememberCoroutineScope()
     var deleting by remember { mutableStateOf<String?>(null) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -692,7 +695,12 @@ private fun PoolsTab(vms: AppViewModels, version: Int, busy: Boolean, reload: ()
         loading(pools, error)
         if (pools != null && pools.isEmpty()) item { SmallNote("No pools. A pool groups guests and storages to give permissions on them together.") }
         items(pools.orEmpty(), key = { "pool-${it.poolid}" }) { p ->
-            Card(Modifier.fillMaxWidth().clickable { opened = p.poolid }.testTag("pool-${p.poolid}")) {
+            Card(Modifier.fillMaxWidth().clickable {
+                opened = p.poolid
+                detail = null
+                // Loaded from the tap, not in the dialog: a dialog's own LaunchedEffect never delivered under Robolectric.
+                scope.launch { detail = vm.fetch { it.pool(p.poolid) } }
+            }.testTag("pool-${p.poolid}")) {
                 Column(Modifier.padding(12.dp)) {
                     Text(p.poolid, fontWeight = FontWeight.SemiBold)
                     if (p.comment.isNotBlank()) SmallNote(p.comment)
@@ -709,7 +717,7 @@ private fun PoolsTab(vms: AppViewModels, version: Int, busy: Boolean, reload: ()
     opened?.let { id ->
         PoolDialog(
             id,
-            vms,
+            detail,
             guests = state.resources.filter { it.guestType != null && it.vmid != null }.sortedBy { it.vmid }
                 .map { it.vmid!!.toString() to "${it.vmid} ${it.name}" },
             storages = state.resources.mapNotNull { it.storage }.distinct().sorted(),
@@ -741,24 +749,18 @@ private fun PoolsTab(vms: AppViewModels, version: Int, busy: Boolean, reload: ()
 @Composable
 private fun PoolDialog(
     poolid: String,
-    vms: AppViewModels,
+    loaded: Result<PvePool>?,
     guests: List<Pair<String, String>>,
     storages: List<String>,
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
     onSave: (PvePool, Set<Int>, Set<String>) -> Unit,
 ) {
-    var pool by remember { mutableStateOf<PvePool?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var chosenGuests by remember { mutableStateOf(emptySet<String>()) }
-    var chosenStorages by remember { mutableStateOf(emptySet<String>()) }
-    LaunchedEffect(poolid) {
-        vms.proxmox.fetch { it.pool(poolid) }.onSuccess { p ->
-            pool = p
-            chosenGuests = p.guests.map { it.toString() }.toSet()
-            chosenStorages = p.storages.toSet()
-        }.onFailure { error = it.message }
-    }
+    val pool = loaded?.getOrNull()
+    val error = loaded?.exceptionOrNull()?.let { it.message ?: "Couldn't load the pool." }
+    // The user's picks, starting from the pool's members once they are loaded.
+    var chosenGuests by remember(pool) { mutableStateOf(pool?.guests.orEmpty().map { it.toString() }.toSet()) }
+    var chosenStorages by remember(pool) { mutableStateOf(pool?.storages.orEmpty().toSet()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Pool $poolid") },
@@ -776,7 +778,7 @@ private fun PoolDialog(
                             Text("Remove pool", color = MaterialTheme.colorScheme.error)
                         }
                     }
-                    error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)
+                    error != null -> Text(error, color = MaterialTheme.colorScheme.error)
                     else -> Text("Loading…")
                 }
             }
