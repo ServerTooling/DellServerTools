@@ -1,11 +1,18 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -15,6 +22,16 @@ import org.junit.runner.RunWith
 class NodeSystemE2ETest : ProxmoxE2ETestBase() {
 
     private fun waitFor(tag: String) = waitUntil { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
+
+    // The tabs are lazy lists that compose only what is on screen, buttons are disabled while a change runs (a tap
+    // on a disabled one is dropped), and a snackbar can cover a button, so: scroll, wait, click through semantics.
+    private fun tapInList(tag: String) {
+        waitUntil {
+            runCatching { compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag(tag)) }.isSuccess &&
+                compose.onAllNodes(hasTestTag(tag) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
+    }
 
     private fun confirmInDialog(label: String) {
         waitUntil { compose.onAllNodes(hasText(label) and hasAnyAncestor(isDialog())).fetchSemanticsNodes().isNotEmpty() }
@@ -36,14 +53,14 @@ class NodeSystemE2ETest : ProxmoxE2ETestBase() {
     fun addsABridgeAndAppliesTheNetwork() {
         openSystem()
         waitFor("net-vmbr0")
-        tap("net-add-bridge")
+        tapInList("net-add-bridge")
         type("net-cidr", "192.0.2.60/24")
         tap("net-ports-eno1")
         tap("net-save")
         waitUntil { pve.network["vmbr2"]?.get("cidr") == "192.0.2.60/24" }
         assertEquals("eno1", pve.network.getValue("vmbr2")["bridge_ports"])
 
-        tap("net-apply")
+        tapInList("net-apply")
         confirmInDialog("Apply")
         waitUntil { pve.networkApplied }
     }
@@ -60,18 +77,18 @@ class NodeSystemE2ETest : ProxmoxE2ETestBase() {
 
         tap("sys-tab-services")
         waitFor("svc-start-postfix")
-        tap("svc-start-postfix")
+        tapInList("svc-start-postfix")
         confirmInDialog("Start")
         waitUntil { pve.lastCall("POST", "/nodes/pve/services/postfix/start") != null }
 
         tap("sys-tab-updates")
         waitForText("pve-manager")
-        tap("apt-refresh")
+        tapInList("apt-refresh")
         waitUntil { pve.lastCall("POST", "/nodes/pve/apt/update") != null }
 
         tap("sys-tab-repos")
         waitFor("repo-add-no-subscription")
-        tap("repo-add-no-subscription")
+        tapInList("repo-add-no-subscription")
         waitUntil { "no-subscription" in pve.addedRepos }
 
         tap("sys-tab-syslog")
