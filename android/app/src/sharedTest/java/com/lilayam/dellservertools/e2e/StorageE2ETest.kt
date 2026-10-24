@@ -1,5 +1,6 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isEnabled
@@ -7,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
@@ -63,7 +65,8 @@ class StorageE2ETest : ProxmoxE2ETestBase() {
         assertEquals(mapOf("notes" to "web-01", "protected" to "1"), pve.calls.last { it.method == "PUT" }.params)
 
         scrollListTo("debian-12.7.0-amd64-netinst.iso")
-        tap("volume-debian-12.7.0-amd64-netinst.iso")
+        // The "Update …: done" snackbar can cover the card, so click through semantics rather than a touch.
+        compose.onNodeWithTag("volume-debian-12.7.0-amd64-netinst.iso").performSemanticsAction(SemanticsActions.OnClick)
         waitEnabled("volume-delete")
         tap("volume-delete")
         waitForText("Tap again to delete for good")
