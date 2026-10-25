@@ -90,6 +90,7 @@ fun VncScreen(profile: ServerProfile, screen: Screen.VmConsole, vms: AppViewMode
     }
     DisposableEffect(session) { onDispose { session.close() } }
     val state by session.state.collectAsStateWithLifecycle()
+    ReconnectWhenBack(state.dropped) { attempt++ }
     val apiState by proxmox.state.collectAsStateWithLifecycle()
     ForwardMessages(apiState.message, vms) { proxmox.clearMessage() }
     var text by remember { mutableStateOf("") }

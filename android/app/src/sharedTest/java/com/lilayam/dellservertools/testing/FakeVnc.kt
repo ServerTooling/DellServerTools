@@ -27,6 +27,10 @@ class FakeVnc(private val password: String, val width: Int = 4, val height: Int 
     @Volatile
     var updatesSent = 0
 
+    /** WebSocket connections opened so far. */
+    @Volatile
+    var connections = 0
+
     private val buf = ByteArrayOutputStream()
     private var data = ByteArray(0)
     private var step = 0
@@ -34,8 +38,14 @@ class FakeVnc(private val password: String, val width: Int = 4, val height: Int 
 
     private val open = CopyOnWriteArrayList<WebSocket>()
 
+    @Synchronized
     override fun onOpen(webSocket: WebSocket, response: Response) {
         open += webSocket
+        connections++
+        authenticated = false
+        // One connection at a time: a reconnect starts the handshake over.
+        step = 0
+        buf.reset()
         webSocket.send("RFB 003.008\n".toByteArray().toByteString())
     }
 

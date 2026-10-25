@@ -20,6 +20,8 @@ data class VncState(
     val height: Int = 0,
     /** Bumped after every screen update, so the screen redraws [VncSession.bitmap]. */
     val frame: Long = 0,
+    /** The screen was showing and then the connection was lost (e.g. while the app was in the background). */
+    val dropped: Boolean = false,
 )
 
 /**
@@ -79,7 +81,11 @@ class VncSession(
                     }
                 }
             } catch (e: Exception) {
-                if (!closed) _state.update { it.copy(status = "Disconnected: ${describe(e)}", connected = false) }
+                if (!closed) {
+                    _state.update {
+                        it.copy(status = "Disconnected: ${describe(e)}", connected = false, dropped = it.connected)
+                    }
+                }
             } finally {
                 runCatching { socket?.close() }
             }

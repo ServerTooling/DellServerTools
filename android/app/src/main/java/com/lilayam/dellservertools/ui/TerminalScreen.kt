@@ -136,6 +136,11 @@ fun TerminalScreen(profile: ServerProfile, vms: AppViewModels, initialCommand: S
             initialSent = true
         }
     }
+    // A new connection is a new host shell, so a guest shell enters the guest again.
+    ReconnectWhenBack(state.dropped && state.profileId == profile.id) {
+        initialSent = initialCommand.isNullOrBlank()
+        vm.reconnect()
+    }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         TopAppBar(
