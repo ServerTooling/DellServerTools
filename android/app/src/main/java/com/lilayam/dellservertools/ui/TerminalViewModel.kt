@@ -39,6 +39,8 @@ data class TerminalUiState(
     /** Login was rejected; the stored/typed password is probably wrong. */
     val authFailed: Boolean = false,
     val hostKeyPrompt: FingerprintPrompt? = null,
+    /** The connection was up and then lost without the user disconnecting (e.g. while the app was in the background). */
+    val dropped: Boolean = false,
     val lines: List<String> = emptyList(),
     val message: String? = null,
 )
@@ -133,7 +135,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             ServerType.PROXMOX -> ConnectionSettings(profile.host, profile.sshPort, profile.sshUsername, password)
         }
         _state.update {
-            it.copy(status = ConnectionStatus.CONNECTING, error = null, authFailed = false, hostKeyPrompt = null)
+            it.copy(status = ConnectionStatus.CONNECTING, error = null, authFailed = false, hostKeyPrompt = null, dropped = false)
         }
 
         val newSession = SshShellSession(
@@ -189,7 +191,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
                 dirty = true
                 newSession.disconnect()
                 session = null
-                _state.update { it.copy(status = ConnectionStatus.DISCONNECTED) }
+                _state.update { it.copy(status = ConnectionStatus.DISCONNECTED, dropped = true) }
             }
         }
     }

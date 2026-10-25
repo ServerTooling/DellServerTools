@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.lilayam.dellservertools.core.vnc.Keysyms
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,5 +34,23 @@ class VmConsoleE2ETest : ProxmoxE2ETestBase() {
 
         tap("vnc-key-enter")
         waitUntil { Keysyms.ENTER in pve.vnc.keysDown }
+    }
+
+    @Test
+    fun reconnectsAfterTheConnectionWasCutInTheBackground() {
+        pve.vmRunning.set(true)
+        addServerAndConnect()
+        waitForText("100 · web-01")
+        compose.onNodeWithText("100 · web-01").performClick()
+        waitUntil { runCatching { compose.onNodeWithTag("guest-console").assertIsEnabled() }.isSuccess }
+        tap("guest-console")
+        waitUntil { pve.vnc.updatesSent > 0 }
+
+        // As Android does to a backgrounded app's sockets.
+        leaveAndReturn { pve.vnc.disconnectAll() }
+
+        waitUntil { pve.vnc.connections == 2 && pve.vnc.authenticated }
+        waitForText("Connected to vm-100", substring = true)
+        assertEquals(2, pve.requestsTo("/nodes/pve/qemu/100/vncproxy", "POST").size)
     }
 }

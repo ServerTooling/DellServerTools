@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import com.lilayam.dellservertools.MainActivity
@@ -67,6 +68,14 @@ abstract class E2ETest {
             context.getSharedPreferences(it, Context.MODE_PRIVATE).edit().clear().commit()
             context.deleteSharedPreferences(it)
         }
+    }
+
+    /** Sends the app to the background (stopped, as on the home screen), runs [whileAway], and brings it back. */
+    protected fun leaveAndReturn(whileAway: () -> Unit = {}) {
+        val s = scenario ?: error("launch() first")
+        s.moveToState(Lifecycle.State.CREATED)
+        whileAway()
+        s.moveToState(Lifecycle.State.RESUMED)
     }
 
     protected fun launch(intent: Intent? = null) {
