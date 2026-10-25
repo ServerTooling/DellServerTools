@@ -50,8 +50,11 @@ class FakeVnc(private val password: String, val width: Int = 4, val height: Int 
         open -= webSocket
     }
 
-    /** Drops every connection still open, e.g. a console screen the test left open. */
-    fun disconnectAll() = open.forEach { it.cancel() }
+    /**
+     * Closes every connection still open, e.g. a console screen the test left open, or one whose close frame
+     * hasn't been answered yet. (A server-side OkHttp WebSocket has no call, so `cancel()` would throw.)
+     */
+    fun disconnectAll() = open.forEach { runCatching { it.close(1001, null) } }
 
     @Synchronized
     override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
