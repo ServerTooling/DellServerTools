@@ -154,11 +154,13 @@ fun CreateVmScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
             CheckRow("Start after creating", start) { start = it }
 
             problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-            if (bios == VmBios.OVMF) {
+            if (osType == OsType.WIN11) {
                 Text(
-                    "UEFI adds an EFI disk. Windows 11 also needs a TPM — add that in the web interface after creating.",
+                    "Windows 11 gets what its setup checks for: UEFI with Secure Boot keys (an EFI disk), q35 and a TPM 2.0.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+            } else if (bios == VmBios.OVMF) {
+                Text("UEFI adds an EFI disk with Secure Boot keys.", style = MaterialTheme.typography.bodySmall)
             }
 
             Button(

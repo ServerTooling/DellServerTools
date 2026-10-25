@@ -120,4 +120,12 @@ class VmHardwareTest {
         assertNotNull(edit.with("ipconfig0", "ip=").validate())
         assertNull(edit.with("ipconfig0", "ip=192.0.2.5/24").validate())
     }
+
+    @Test
+    fun `an efi disk without pre-enrolled keys is spotted`() {
+        assertTrue(VmHardware.efiDiskHasKeys(VmHardware.efiDisk("local-zfs")))
+        assertTrue(VmHardware.efiDiskHasKeys("local-zfs:vm-100-disk-1,efitype=4m,pre-enrolled-keys=1,size=1M"))
+        assertFalse(VmHardware.efiDiskHasKeys("local-zfs:vm-100-disk-1,efitype=4m,size=1M"))
+        assertFalse(VmHardware.efiDiskHasKeys("local-zfs:vm-100-disk-1,efitype=4m,pre-enrolled-keys=0,size=1M"))
+    }
 }
