@@ -1,6 +1,7 @@
 package com.lilayam.dellservertools.e2e
 
-import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -19,7 +20,8 @@ class VmConsoleE2ETest : ProxmoxE2ETestBase() {
         addServerAndConnect()
         waitForText("100 · web-01")
         compose.onNodeWithText("100 · web-01").performClick()
-        waitUntil { compose.onAllNodesWithTag("guest-console").fetchSemanticsNodes().isNotEmpty() }
+        // Enabled once the VM's status says it is running.
+        waitUntil { runCatching { compose.onNodeWithTag("guest-console").assertIsEnabled() }.isSuccess }
         tap("guest-console")
 
         waitForText("Console 100")

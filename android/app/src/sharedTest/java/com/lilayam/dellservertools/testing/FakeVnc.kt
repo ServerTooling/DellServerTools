@@ -32,9 +32,26 @@ class FakeVnc(private val password: String, val width: Int = 4, val height: Int 
     private var step = 0
     private val challenge = ByteArray(16) { (it * 7 + 3).toByte() }
 
+    private val open = CopyOnWriteArrayList<WebSocket>()
+
     override fun onOpen(webSocket: WebSocket, response: Response) {
+        open += webSocket
         webSocket.send("RFB 003.008\n".toByteArray().toByteString())
     }
+
+    // OkHttp stops reading after a close frame and waits for us to answer it; without this, MockWebServer's
+    // shutdown would wait for the connection forever.
+    override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        webSocket.close(code, null)
+        open -= webSocket
+    }
+
+    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+        open -= webSocket
+    }
+
+    /** Drops every connection still open, e.g. a console screen the test left open. */
+    fun disconnectAll() = open.forEach { it.cancel() }
 
     @Synchronized
     override fun onMessage(webSocket: WebSocket, bytes: ByteString) {

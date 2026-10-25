@@ -885,5 +885,8 @@ class FakeProxmox : AutoCloseable {
     fun requestsTo(pathSuffix: String, method: String? = null): List<RecordedRequest> =
         requests.filter { it.path.orEmpty().substringBefore('?').endsWith(pathSuffix) && (method == null || it.method == method) }
 
-    override fun close() = server.shutdown()
+    override fun close() {
+        vnc.disconnectAll()
+        server.shutdown()
+    }
 }
