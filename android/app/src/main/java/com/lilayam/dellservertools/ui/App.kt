@@ -113,6 +113,7 @@ fun DellServerToolsApp(vms: AppViewModels, onExit: () -> Unit) {
                     is Screen.TaskLog -> WithProfile(vms, screen.profileId) { TaskLogScreen(screen, vms) }
                     is Screen.Web -> WithProfile(vms, screen.profileId) { WebScreen(it, screen, vms) }
                     is Screen.VmConsole -> WithProfile(vms, screen.profileId) { VncScreen(it, screen, vms) }
+                    is Screen.ProxmoxShell -> WithProfile(vms, screen.profileId) { ProxmoxShellScreen(screen, vms) }
                 }
             }
         }

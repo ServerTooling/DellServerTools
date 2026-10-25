@@ -630,7 +630,26 @@ class ProxmoxClient(
     }
 
     /** Connects the VM's VNC WebSocket for [ticket], over the pinned TLS and with this client's login. */
-    fun openVncWebSocket(node: String, vmid: Int, ticket: VncTicket): WebSocket {
+    fun openVncWebSocket(node: String, vmid: Int, ticket: VncTicket): WebSocket =
+        openWebSocket(VncProxy.websocketPath(node, vmid, ticket))
+
+    /** Asks for a terminal ticket: the node's shell when [vmid] is null, otherwise that container's console. */
+    fun termProxy(node: String, vmid: Int?): TermProxyTicket {
+        val data = post("${TermProxy.path(node, vmid)}/termproxy", emptyMap()) as? JSONObject
+            ?: throw ProxmoxApiException(0, "Unexpected termproxy response")
+        return TermProxyTicket(
+            port = data.getString("port").toInt(),
+            ticket = data.getString("ticket"),
+            user = data.getString("user"),
+        )
+    }
+
+    /** Connects the terminal WebSocket for [ticket] (see [TermProxy]). */
+    fun openTermWebSocket(node: String, vmid: Int?, ticket: TermProxyTicket): WebSocket =
+        openWebSocket(TermProxy.websocketPath(node, vmid, ticket))
+
+    /** A WebSocket to [path] over the pinned TLS, with this client's login. */
+    private fun openWebSocket(path: String): WebSocket {
         if (credentials is ProxmoxCredentials.Password && this.ticket == null) login()
         val socket = tls.socketFactory.createSocket() as SSLSocket
         try {
@@ -638,7 +657,7 @@ class ProxmoxClient(
             socket.soTimeout = 0
             socket.startHandshake()
             if (!tls.hostnameVerifier.verify(host, socket.session)) throw IOException("Certificate doesn't match $host")
-            return WebSocket.open(socket, "${formatHostForUrl(host)}:$port", VncProxy.websocketPath(node, vmid, ticket), authHeaders(write = false))
+            return WebSocket.open(socket, "${formatHostForUrl(host)}:$port", path, authHeaders(write = false))
         } catch (e: Exception) {
             socket.close()
             throw e

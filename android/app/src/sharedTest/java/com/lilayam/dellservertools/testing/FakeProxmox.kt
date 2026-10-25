@@ -135,6 +135,11 @@ class FakeProxmox : AutoCloseable {
     val vncTicket = "PVEVNC:6720F1A2::fake+ticket/with=chars"
     val vnc = FakeVnc(vncTicket)
 
+    /** The node's shell and container 200's console, served on `vncwebsocket` for the tickets `termproxy` hands out. */
+    val shellTicket = "PVEVNC:6720F1A3::fake+shell/ticket="
+    val nodeShell = FakeTermProxy("root@pam", shellTicket, "root@pve:~# ")
+    val ctConsole = FakeTermProxy("root@pam", shellTicket, "root@gh-runner-1:~# ")
+
     /** Keys pressed in VM 100 through the sendkey API, in order. */
     val sentKeys = CopyOnWriteArrayList<String>()
 
@@ -453,6 +458,17 @@ class FakeProxmox : AutoCloseable {
                     MockResponse().withWebSocketUpgrade(vnc)
                 } else {
                     error(401, "invalid vnc ticket")
+                }
+            }
+            (path == "/nodes/pve/termproxy" || path == "/nodes/pve/lxc/200/termproxy") && request.method == "POST" ->
+                json("""{"port":"5901","ticket":"$shellTicket","user":"root@pam","upid":"UPID:pve:00000021:termproxy::root@pam:"}""")
+            (path.startsWith("/nodes/pve/vncwebsocket") || path.startsWith("/nodes/pve/lxc/200/vncwebsocket")) &&
+                request.method == "GET" -> {
+                val query = request.requestUrl!!
+                if (query.queryParameter("port") == "5901" && query.queryParameter("vncticket") == shellTicket) {
+                    MockResponse().withWebSocketUpgrade(if (path.startsWith("/nodes/pve/lxc/")) ctConsole else nodeShell)
+                } else {
+                    error(401, "invalid terminal ticket")
                 }
             }
             path == "/nodes/pve/qemu/100/sendkey" && request.method == "PUT" -> {
@@ -887,6 +903,8 @@ class FakeProxmox : AutoCloseable {
 
     override fun close() {
         vnc.disconnectAll()
+        nodeShell.disconnectAll()
+        ctConsole.disconnectAll()
         server.shutdown()
     }
 }

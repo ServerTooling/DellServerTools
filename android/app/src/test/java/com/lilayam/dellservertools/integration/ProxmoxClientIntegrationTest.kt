@@ -6,6 +6,8 @@ import com.lilayam.dellservertools.core.proxmox.PinnedTls
 import com.lilayam.dellservertools.core.proxmox.ProxmoxApiException
 import com.lilayam.dellservertools.core.proxmox.ProxmoxClient
 import com.lilayam.dellservertools.core.proxmox.ProxmoxCredentials
+import com.lilayam.dellservertools.core.proxmox.TermProxySession
+import com.lilayam.dellservertools.core.proxmox.TermProxyTicket
 import com.lilayam.dellservertools.core.proxmox.VncTicket
 import com.lilayam.dellservertools.core.vnc.Keysyms
 import com.lilayam.dellservertools.core.vnc.RfbClient
@@ -222,6 +224,50 @@ class ProxmoxClientIntegrationTest {
         val upgrade = pve.requestsTo("/nodes/pve/qemu/100/vncwebsocket", "GET").single()
         assertEquals(pve.ticket, URLDecoder.decode(upgrade.getHeader("Cookie")!!.substringAfter("PVEAuthCookie="), "UTF-8"))
         assertEquals("binary", upgrade.getHeader("Sec-WebSocket-Protocol"))
+    }
+
+    @Test
+    fun `node shell and container console open over termproxy`() {
+        val c = client()
+        c.login()
+        val ticket = c.termProxy("pve", null)
+        assertEquals(TermProxyTicket(5901, pve.shellTicket, "root@pam"), ticket)
+
+        val shell = TermProxySession(c.openTermWebSocket("pve", null, ticket), ticket)
+        val output = shell.start(80, 25)
+        assertEquals("root@pve:~# ", readText(output, "root@pve:~# ".length))
+        shell.send("ls\r")
+        assertEquals("ls\r\nroot@pve:~# ", readText(output, "ls\r\nroot@pve:~# ".length))
+        assertEquals(listOf("ls\r"), pve.nodeShell.input)
+        assertEquals(listOf("80x25"), pve.nodeShell.sizes)
+        shell.close()
+
+        val ctTicket = c.termProxy("pve", 200)
+        val console = TermProxySession(c.openTermWebSocket("pve", 200, ctTicket), ctTicket)
+        assertEquals("root@gh-runner-1:~# ", readText(console.start(80, 25), "root@gh-runner-1:~# ".length))
+        console.close()
+        assertEquals(1, pve.ctConsole.logins)
+    }
+
+    @Test
+    fun `a wrong terminal ticket is refused at the websocket`() {
+        val c = client()
+        c.login()
+        val e = assertThrows<WebSocketRefused> {
+            c.openTermWebSocket("pve", null, TermProxyTicket(5901, "PVEVNC:stale", "root@pam"))
+        }
+        assertEquals(401, e.code)
+    }
+
+    private fun readText(input: java.io.InputStream, length: Int): String {
+        val bytes = ByteArray(length)
+        var read = 0
+        while (read < length) {
+            val n = input.read(bytes, read, length - read)
+            check(n > 0) { "closed after $read bytes" }
+            read += n
+        }
+        return String(bytes)
     }
 
     @Test

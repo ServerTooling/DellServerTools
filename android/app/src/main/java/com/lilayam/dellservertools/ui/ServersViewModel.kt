@@ -55,6 +55,9 @@ sealed interface Screen {
     data class TaskLog(val profileId: String, val node: String, val upid: String, val title: String) : Screen
     /** A QEMU VM's screen in the app's own VNC viewer. */
     data class VmConsole(val profileId: String, val node: String, val vmid: Int, val name: String) : Screen
+
+    /** The node's shell ([vmid] null) or a container's console, over Proxmox's termproxy like the web UI's. */
+    data class ProxmoxShell(val profileId: String, val node: String, val vmid: Int?, val title: String) : Screen
     /** [consoleVm] is set for a QEMU VM's console, which then offers keys sent through the API. */
     data class Web(
         val profileId: String,

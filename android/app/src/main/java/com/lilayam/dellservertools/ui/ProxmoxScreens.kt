@@ -608,11 +608,10 @@ fun NodeScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
             item {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     FilledTonalButton(onClick = { vms.servers.openShell(profile) }) { Text("SSH shell") }
-                    FilledTonalButton(onClick = {
-                        vm.consoleUrl(node, null, null, null)?.let {
-                            vms.servers.navigate(Screen.Web(profile.id, it, "$node shell", isMainUi = false))
-                        }
-                    }) { Text("Web shell") }
+                    FilledTonalButton(
+                        onClick = { vms.servers.navigate(Screen.ProxmoxShell(profile.id, node, null, "$node shell")) },
+                        modifier = Modifier.testTag("node-shell"),
+                    ) { Text("Shell") }
                     FilledTonalButton(
                         onClick = { vms.servers.navigate(Screen.Restore(profile.id, node)) },
                         modifier = Modifier.testTag("node-restore"),
@@ -902,13 +901,12 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                     }
                     FilledTonalButton(
                         onClick = {
-                            if (screen.type == GuestType.QEMU) {
-                                vms.servers.navigate(Screen.VmConsole(profile.id, screen.node, screen.vmid, screen.name))
-                            } else {
-                                vm.consoleUrl(screen.node, screen.type, screen.vmid, screen.name)?.let {
-                                    vms.servers.navigate(Screen.Web(profile.id, it, "Console ${screen.vmid}", isMainUi = false))
-                                }
-                            }
+                            vms.servers.navigate(
+                                when (screen.type) {
+                                    GuestType.QEMU -> Screen.VmConsole(profile.id, screen.node, screen.vmid, screen.name)
+                                    GuestType.LXC -> Screen.ProxmoxShell(profile.id, screen.node, screen.vmid, "Console ${screen.vmid}")
+                                },
+                            )
                         },
                         enabled = status?.isRunning == true,
                         modifier = Modifier.testTag("guest-console"),
