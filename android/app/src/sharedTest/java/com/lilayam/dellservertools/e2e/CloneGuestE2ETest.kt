@@ -28,6 +28,7 @@ class CloneGuestE2ETest : ProxmoxE2ETestBase() {
         waitUntil { compose.onAllNodesWithTag("clone-submit").fetchSemanticsNodes().isNotEmpty() }
         // New ID and name are the first fields (no scrolling); set a deterministic name.
         type("clone-name", "web-02", replace = true)
+        tap("clone-start")
         tap("clone-submit")
 
         waitUntil { pve.lastCloneParams.isNotEmpty() }
@@ -35,7 +36,8 @@ class CloneGuestE2ETest : ProxmoxE2ETestBase() {
         assertEquals("201", pve.lastCloneParams["newid"])
         assertEquals("web-02", pve.lastCloneParams["name"])
         assertEquals("1", pve.lastCloneParams["full"])
-        // Back on the overview after the task finishes.
+        // Straight back on the overview, which shows the task; the copy is started once the clone finished.
         waitForText("100 · web-01")
+        waitUntil { pve.lastCall("POST", "/nodes/pve/qemu/201/status/start") != null }
     }
 }

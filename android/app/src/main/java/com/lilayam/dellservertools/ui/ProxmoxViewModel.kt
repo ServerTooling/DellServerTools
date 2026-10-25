@@ -302,8 +302,10 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         load { c ->
             val status = c.guestStatus(node, type, vmid)
             val previous = _state.value.guest?.takeIf { it.vmid == vmid && it.node == node }
-            val config = if (full || previous == null) c.guestConfig(node, type, vmid) else previous.config
-            val snapshots = if (full || previous == null) {
+            // A lock means a task (clone, restore, ...) is still writing the config; read it until the lock is gone.
+            val reread = full || status.lock != null || previous?.status?.lock != null
+            val config = if (reread || previous == null) c.guestConfig(node, type, vmid) else previous.config
+            val snapshots = if (reread || previous == null) {
                 runCatching { c.snapshots(node, type, vmid) }.getOrDefault(emptyList())
             } else {
                 previous.snapshots
@@ -596,8 +598,20 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         }
 
     /** Clones a CT/VM and, on success, reports it and refreshes the list. */
-    fun cloneGuest(node: String, type: GuestType, vmid: Int, request: CloneRequest, onCloned: () -> Unit) =
-        runTask("Clone ${type.label} $vmid to ${request.newId}", node, refreshGuest = null, afterDone = onCloned) { c ->
+    /** Clones a CT/VM; with [startWhenDone] the copy is started once the clone task has finished. */
+    fun cloneGuest(node: String, type: GuestType, vmid: Int, request: CloneRequest, startWhenDone: Boolean) =
+        runTask(
+            "Clone ${type.label} $vmid to ${request.newId}",
+            node,
+            refreshGuest = null,
+            // A full clone copies every disk; tens of GB on a busy pool take longer than the usual task wait.
+            waitMs = CLONE_WAIT_MS,
+            afterDone = if (startWhenDone) {
+                { guestAction(node, type, request.newId, "start", "Start ${type.label} ${request.newId}") }
+            } else {
+                null
+            },
+        ) { c ->
             c.cloneGuest(node, type, vmid, request.toParams())
         }
 
@@ -663,6 +677,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         node: String,
         refreshGuest: Triple<String, GuestType, Int>?,
         afterDone: (() -> Unit)? = null,
+        waitMs: Long = TASK_WAIT_MS,
         start: (ProxmoxClient) -> String?,
     ) {
         val c = client ?: return
@@ -677,7 +692,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
                     val upid = start(c)
                     if (upid.isNullOrBlank() || !upid.startsWith("UPID:")) return@runCatching "done"
                     withContext(Dispatchers.Main) { _state.update { it.copy(busyTask = node to upid) } }
-                    val deadline = System.currentTimeMillis() + TASK_WAIT_MS
+                    val deadline = System.currentTimeMillis() + waitMs
                     while (System.currentTimeMillis() < deadline) {
                         val status = c.taskStatus(node, upid)
                         if (!status.running) {
@@ -751,6 +766,7 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
 
     private companion object {
         const val TASK_WAIT_MS = 5 * 60 * 1000L
+        const val CLONE_WAIT_MS = 60 * 60 * 1000L
         const val RESTART_WAIT_MS = 3_000L
     }
 }

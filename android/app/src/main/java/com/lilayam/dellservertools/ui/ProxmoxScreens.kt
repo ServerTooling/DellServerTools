@@ -781,6 +781,9 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
     var convertTemplate by remember { mutableStateOf(false) }
     val config = detail?.config.orEmpty().toMap()
     val isTemplate = config["template"] == "1"
+    // A clone or backup holds the lock; Proxmox would refuse every action with "can't lock file ... got timeout".
+    val locked = status?.actionsLocked == true
+    val idle = state.busy == null && !locked
 
     val actions = buildList {
         if (status == null || isTemplate) return@buildList
@@ -820,7 +823,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                 IconButton(onClick = {
                     vms.servers.navigate(Screen.CloneGuest(profile.id, screen.node, screen.type, screen.vmid, screen.name))
                 }) { Icon(Icons.Filled.ContentCopy, "Clone") }
-                IconButton(onClick = { showDelete = true }, enabled = state.busy == null) {
+                IconButton(onClick = { showDelete = true }, enabled = idle) {
                     Icon(Icons.Filled.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
                 }
             },
@@ -845,6 +848,13 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                                 status.lock?.let { Text("  · locked ($it)", style = MaterialTheme.typography.labelSmall) }
                                 if (isTemplate) Text("  · template", style = MaterialTheme.typography.labelSmall)
                             }
+                            if (locked) {
+                                Text(
+                                    "A ${status.lock} task is still running on this $kind. Start and changes come back when it finishes.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.testTag("guest-locked"),
+                                )
+                            }
                             if (status.isRunning) {
                                 UsageLine("CPU", status.cpu, "${Format.percent(status.cpu)} of ${status.cpus}")
                                 if (status.maxMem > 0) {
@@ -868,7 +878,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                                             val edit = GuestEdit(screen.type, config).with("protection", if (on) "1" else "")
                                             vm.editGuest(screen.node, screen.type, screen.vmid, edit) {}
                                         },
-                                        enabled = state.busy == null,
+                                        enabled = idle,
                                         modifier = Modifier.testTag("guest-protection"),
                                     )
                                 }
@@ -884,10 +894,11 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                         if (action.confirm == null) {
                             FilledTonalButton(
                                 onClick = { vm.guestAction(screen.node, screen.type, screen.vmid, action.action, "${action.label} $kind ${screen.vmid}") },
-                                enabled = state.busy == null,
+                                enabled = idle,
+                                modifier = Modifier.testTag("guest-action-${action.action}"),
                             ) { Text(action.label) }
                         } else {
-                            OutlinedButton(onClick = { confirm = action }, enabled = state.busy == null) {
+                            OutlinedButton(onClick = { confirm = action }, enabled = idle) {
                                 Text(action.label, color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified)
                             }
                         }
@@ -911,7 +922,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                         enabled = status?.isRunning == true,
                         modifier = Modifier.testTag("guest-console"),
                     ) { Text("Console") }
-                    OutlinedButton(onClick = { backupDialog = true }, enabled = state.busy == null) { Text("Back up now") }
+                    OutlinedButton(onClick = { backupDialog = true }, enabled = idle) { Text("Back up now") }
                     if (detail?.config?.isNotEmpty() == true && MoveDiskRequest.movable(GuestEdit(screen.type, config)).isNotEmpty()) {
                         OutlinedButton(
                             onClick = {
@@ -924,19 +935,20 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                                     moveTargets = vm.fetch { c -> c.storage(screen.node).filter { it.active && it.holds(content) }.map { it.storage } }
                                 }
                             },
-                            enabled = state.busy == null,
+                            enabled = idle,
                             modifier = Modifier.testTag("guest-move-disk"),
                         ) { Text(if (screen.type == GuestType.QEMU) "Move disk" else "Move volume") }
                     }
                     if (status != null && !status.isRunning && !isTemplate && detail?.config?.isNotEmpty() == true) {
                         OutlinedButton(
                             onClick = { convertTemplate = true },
-                            enabled = state.busy == null,
+                            enabled = idle,
                             modifier = Modifier.testTag("guest-template"),
                         ) { Text("Convert to template") }
                     }
                     OutlinedButton(
                         onClick = { vms.servers.navigate(Screen.Restore(profile.id, screen.node, screen.vmid)) },
+                        enabled = !locked,
                         modifier = Modifier.testTag("guest-restore"),
                     ) { Text("Restore") }
                     OutlinedButton(
@@ -976,10 +988,10 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                         snap.time?.let { Text(formatTime(it), style = MaterialTheme.typography.labelSmall) }
                         if (snap.description.isNotBlank()) Text(snap.description, style = MaterialTheme.typography.bodySmall)
                         Row {
-                            TextButton(onClick = { snapshotConfirm = "rollback" to snap.name }, enabled = state.busy == null) {
+                            TextButton(onClick = { snapshotConfirm = "rollback" to snap.name }, enabled = idle) {
                                 Text("Roll back")
                             }
-                            TextButton(onClick = { snapshotConfirm = "delete" to snap.name }, enabled = state.busy == null) {
+                            TextButton(onClick = { snapshotConfirm = "delete" to snap.name }, enabled = idle) {
                                 Text("Delete", color = MaterialTheme.colorScheme.error)
                             }
                         }
@@ -987,7 +999,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                 }
             }
             item {
-                OutlinedButton(onClick = { snapshotDialog = true }, enabled = state.busy == null && detail != null) {
+                OutlinedButton(onClick = { snapshotDialog = true }, enabled = idle && detail != null) {
                     Text("Take snapshot")
                 }
             }
