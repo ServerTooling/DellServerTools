@@ -440,7 +440,7 @@ private fun PasteScriptDialog(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SelectTextDialog(text: String, fontSize: Float, onCopyAll: () -> Unit, onDismiss: () -> Unit) {
+internal fun SelectTextDialog(text: String, fontSize: Float, onCopyAll: () -> Unit, onDismiss: () -> Unit) {
     val vScroll = rememberScrollState()
     // Open at the end, where the latest output is.
     LaunchedEffect(vScroll.maxValue) { vScroll.scrollTo(vScroll.maxValue) }
@@ -490,7 +490,7 @@ private fun SelectTextDialog(text: String, fontSize: Float, onCopyAll: () -> Uni
 }
 
 @Composable
-private fun TerminalOutput(lines: List<String>, fontSize: Float, onLongPress: () -> Unit, modifier: Modifier) {
+internal fun TerminalOutput(lines: List<String>, fontSize: Float, onLongPress: () -> Unit, modifier: Modifier) {
     val listState = rememberLazyListState()
     val hScroll = rememberScrollState()
     var followOutput by remember { mutableStateOf(true) }
@@ -536,7 +536,7 @@ private fun TerminalOutput(lines: List<String>, fontSize: Float, onLongPress: ()
 }
 
 @Composable
-private fun KeyRow(
+internal fun KeyRow(
     keys: List<SpecialKey>,
     enabled: Boolean,
     leading: @Composable () -> Unit,

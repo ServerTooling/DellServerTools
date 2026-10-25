@@ -16,6 +16,7 @@ import com.lilayam.dellservertools.core.proxmox.LxcRequest
 import com.lilayam.dellservertools.core.proxmox.MoveDiskRequest
 import com.lilayam.dellservertools.core.proxmox.RestoreRequest
 import com.lilayam.dellservertools.core.proxmox.VmKeys
+import com.lilayam.dellservertools.core.proxmox.TermProxySession
 import com.lilayam.dellservertools.core.vnc.WebSocket
 import com.lilayam.dellservertools.core.vnc.WebSocketRefused
 import com.lilayam.dellservertools.core.proxmox.VmRequest
@@ -155,18 +156,26 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
      * Opens a VM's screen: a fresh VNC ticket, then its WebSocket. Returns the socket and the VNC password
      * (the ticket). A login that expired since the last call is renewed once.
      */
-    fun openVnc(node: String, vmid: Int): Pair<WebSocket, String> {
+    fun openVnc(node: String, vmid: Int): Pair<WebSocket, String> = withRenewedLogin { c ->
+        val ticket = c.vncProxy(node, vmid)
+        c.openVncWebSocket(node, vmid, ticket) to ticket.ticket
+    }
+
+    /** Opens the node's shell ([vmid] null) or a container's console the way the web UI's xterm.js does. */
+    fun openTerminal(node: String, vmid: Int?): TermProxySession = withRenewedLogin { c ->
+        val ticket = c.termProxy(node, vmid)
+        TermProxySession(c.openTermWebSocket(node, vmid, ticket), ticket)
+    }
+
+    /** Runs [open], renewing a login that expired since the last call once (the WebSocket answers 401). */
+    private fun <T> withRenewedLogin(open: (ProxmoxClient) -> T): T {
         val c = client ?: throw IllegalStateException("Not connected")
-        fun open(): Pair<WebSocket, String> {
-            val ticket = c.vncProxy(node, vmid)
-            return c.openVncWebSocket(node, vmid, ticket) to ticket.ticket
-        }
         return try {
-            open()
+            open(c)
         } catch (e: WebSocketRefused) {
             if (e.code != 401 || !c.canRenewLogin) throw e
             c.login()
-            open()
+            open(c)
         }
     }
 
