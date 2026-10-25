@@ -69,6 +69,12 @@ data class GuestStatus(
 ) {
     val isRunning: Boolean get() = status == "running"
     val isPaused: Boolean get() = qmpStatus == "paused" || qmpStatus == "suspended"
+
+    /**
+     * Proxmox refuses start, stop and config changes while a task (clone, backup, snapshot, ...) holds the guest's
+     * lock. `suspended` is the exception: it marks a hibernated VM, and Start is what resumes it.
+     */
+    val actionsLocked: Boolean get() = lock != null && lock != "suspended"
 }
 
 data class Snapshot(

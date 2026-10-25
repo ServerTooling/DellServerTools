@@ -80,6 +80,10 @@ class FakeProxmox : AutoCloseable {
     @Volatile
     var vmTemplate = false
 
+    /** The lock a task holds on VM 100 (e.g. `clone`), shown in its status. */
+    @Volatile
+    var vmLock: String? = null
+
     /** Backup jobs of `/cluster/backup` as their JSON objects, keyed by id; POST adds, PUT edits, DELETE removes. */
     val backupJobs = java.util.concurrent.ConcurrentHashMap(
         mapOf(
@@ -407,7 +411,7 @@ class FakeProxmox : AutoCloseable {
                 json("\"UPID:pve:00000013:${if (m.groupValues[1] == "qemu") "qmdestroy" else "vzdestroy"}:${m.groupValues[2]}:root@pam:\"")
             }
             path == "/nodes/pve/qemu/100/status/current" -> json(
-                """{"status":"$status","name":"web-01","cpus":2,"maxmem":2147483648,"mem":0,"uptime":${if (vmRunning.get()) 60 else 0}}""",
+                """{"status":"$status","name":"web-01","cpus":2,"maxmem":2147483648,"mem":0,"uptime":${if (vmRunning.get()) 60 else 0}${vmLock?.let { ",\"lock\":\"$it\"" } ?: ""}}""",
             )
             path == "/nodes/pve/qemu/100/config" -> json(
                 """{"name":"web-01","memory":2048,"cores":2,"boot":"order=scsi0;net0","scsi0":"local-zfs:vm-100-disk-0,size=32G",
@@ -442,6 +446,9 @@ class FakeProxmox : AutoCloseable {
                 vmRunning.set(true)
                 json("\"UPID:pve:00000001:qmstart:100:root@pam:\"")
             }
+            // Any other VM, e.g. a fresh clone started by "Start it when the clone is done".
+            Regex("/nodes/pve/qemu/\\d+/status/start").matches(path) && request.method == "POST" ->
+                json("\"UPID:pve:00000017:qmstart:${path.split('/')[4]}:root@pam:\"")
             path == "/nodes/pve/qemu/100/status/reset" && request.method == "POST" -> {
                 sentKeys.clear()
                 json("\"UPID:pve:00000014:qmreset:100:root@pam:\"")

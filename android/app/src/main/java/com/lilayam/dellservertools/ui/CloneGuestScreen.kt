@@ -61,6 +61,7 @@ fun CloneGuestScreen(profile: ServerProfile, screen: Screen.CloneGuest, vms: App
     var full by remember { mutableStateOf(true) }
     var storage by remember { mutableStateOf("") }
     var pool by remember { mutableStateOf("") }
+    var startWhenDone by remember { mutableStateOf(false) }
 
     // Prefill the next free id once the options load.
     LaunchedEffect(opts?.loading) {
@@ -153,10 +154,16 @@ fun CloneGuestScreen(profile: ServerProfile, screen: Screen.CloneGuest, vms: App
                 modifier = Modifier.fillMaxWidth().testTag("clone-pool"),
             )
 
+            CheckRow("Start it when the clone is done", startWhenDone, Modifier.testTag("clone-start")) { startWhenDone = it }
+
             problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
             Button(
-                onClick = { vm.cloneGuest(screen.node, screen.type, screen.vmid, request) { vms.servers.back() } },
+                // The copy can take minutes; the overview shows its progress, so don't hold the form open.
+                onClick = {
+                    vm.cloneGuest(screen.node, screen.type, screen.vmid, request, startWhenDone)
+                    vms.servers.back()
+                },
                 enabled = problem == null && state.busy == null,
                 modifier = Modifier.fillMaxWidth().testTag("clone-submit"),
             ) { Text("Clone ${screen.type.label}") }

@@ -73,6 +73,16 @@ class ProxmoxJsonTest {
         assertTrue(status.isRunning)
         assertTrue(status.isPaused)
         assertNull(status.lock)
+        assertFalse(status.actionsLocked)
+    }
+
+    @Test
+    fun `a task's lock blocks actions but a hibernated vm can still be started`() {
+        val cloning = ProxmoxJson.guestStatus(JSONObject("""{"status":"stopped","name":"vm","lock":"clone"}"""))
+        assertEquals("clone", cloning.lock)
+        assertTrue(cloning.actionsLocked)
+        val hibernated = ProxmoxJson.guestStatus(JSONObject("""{"status":"stopped","name":"vm","lock":"suspended"}"""))
+        assertFalse(hibernated.actionsLocked)
     }
 
     @Test

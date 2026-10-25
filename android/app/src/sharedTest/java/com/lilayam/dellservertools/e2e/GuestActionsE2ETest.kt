@@ -1,5 +1,6 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -66,6 +68,24 @@ class GuestActionsE2ETest : ProxmoxE2ETestBase() {
         tap("template-go")
         waitUntil { pve.vmTemplate }
         waitForText("· template", substring = true)
+    }
+
+    @Test
+    fun aLockedVmCanNotBeStartedUntilTheTaskFinishes() {
+        pve.vmLock = "clone"
+        openVm()
+        waitUntil { compose.onAllNodesWithTag("guest-locked").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag("guest-action-start"))
+        compose.onNode(hasTestTag("guest-action-start")).assertIsNotEnabled()
+
+        pve.vmLock = null
+        compose.onNodeWithContentDescription("Back").performClick()
+        waitForText("100 · web-01")
+        compose.onNodeWithText("100 · web-01").performClick()
+        waitUntil { compose.onAllNodesWithTag("guest-protection").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag("guest-action-start"))
+        waitEnabled("guest-action-start")
+        assertTrue(compose.onAllNodesWithTag("guest-locked").fetchSemanticsNodes().isEmpty())
     }
 
     @Test
