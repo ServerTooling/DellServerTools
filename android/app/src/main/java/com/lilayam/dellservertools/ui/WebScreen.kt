@@ -190,7 +190,7 @@ fun WebScreen(profile: ServerProfile, screen: Screen.Web, vms: AppViewModels) {
 
 /** Keys pressed through Proxmox's API, which work whatever the console page does with the phone keyboard. */
 @Composable
-private fun ConsoleKeysMenu(target: ConsoleVm, vms: AppViewModels) {
+internal fun ConsoleKeysMenu(target: ConsoleVm, vms: AppViewModels) {
     var open by remember { mutableStateOf(false) }
     var confirmBoot by remember { mutableStateOf(false) }
     Box {

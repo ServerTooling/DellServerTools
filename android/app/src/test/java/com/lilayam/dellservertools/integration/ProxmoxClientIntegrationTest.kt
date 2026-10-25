@@ -6,6 +6,10 @@ import com.lilayam.dellservertools.core.proxmox.PinnedTls
 import com.lilayam.dellservertools.core.proxmox.ProxmoxApiException
 import com.lilayam.dellservertools.core.proxmox.ProxmoxClient
 import com.lilayam.dellservertools.core.proxmox.ProxmoxCredentials
+import com.lilayam.dellservertools.core.proxmox.VncTicket
+import com.lilayam.dellservertools.core.vnc.Keysyms
+import com.lilayam.dellservertools.core.vnc.RfbClient
+import com.lilayam.dellservertools.core.vnc.WebSocketRefused
 import com.lilayam.dellservertools.testing.FakeProxmox
 import java.net.URLDecoder
 import org.junit.jupiter.api.AfterEach
@@ -194,5 +198,37 @@ class ProxmoxClientIntegrationTest {
         val requests = pve.requestsTo("/nodes/pve/qemu/100/sendkey", "PUT")
         assertEquals(2, requests.size)
         assertTrue(requests.all { it.getHeader("CSRFPreventionToken") == "csrf-token" })
+    }
+
+    @Test
+    fun `VM screen opens over vncproxy and the websocket, with the ticket as VNC password`() {
+        val c = client()
+        c.login()
+        val ticket = c.vncProxy("pve", 100)
+        assertEquals(VncTicket(5900, pve.vncTicket), ticket)
+
+        c.openVncWebSocket("pve", 100, ticket).use { ws ->
+            val rfb = RfbClient(ws.input, ws::send)
+            rfb.handshake(ticket.ticket)
+            assertTrue(pve.vnc.authenticated)
+            rfb.requestUpdate(incremental = false)
+            assertEquals(RfbClient.Update.Frame(1), rfb.readMessage())
+            assertTrue(rfb.pixels.all { it == 0xffff0000.toInt() }, "the fake screen is red")
+            rfb.tap(Keysyms.ENTER)
+            val deadline = System.currentTimeMillis() + 5_000
+            while (pve.vnc.keysDown.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(20)
+            assertEquals(listOf(Keysyms.ENTER), pve.vnc.keysDown)
+        }
+        val upgrade = pve.requestsTo("/nodes/pve/qemu/100/vncwebsocket", "GET").single()
+        assertEquals(pve.ticket, URLDecoder.decode(upgrade.getHeader("Cookie")!!.substringAfter("PVEAuthCookie="), "UTF-8"))
+        assertEquals("binary", upgrade.getHeader("Sec-WebSocket-Protocol"))
+    }
+
+    @Test
+    fun `a wrong VNC ticket is refused at the websocket`() {
+        val c = client()
+        c.login()
+        val e = assertThrows<WebSocketRefused> { c.openVncWebSocket("pve", 100, VncTicket(5900, "PVEVNC:stale")) }
+        assertEquals(401, e.code)
     }
 }

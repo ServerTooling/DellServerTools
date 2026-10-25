@@ -131,6 +131,10 @@ class FakeProxmox : AutoCloseable {
     /** Standard repositories added through the API, by handle. */
     val addedRepos = CopyOnWriteArrayList<String>()
 
+    /** VM 100's screen, served on `vncwebsocket` for the ticket `vncproxy` hands out. */
+    val vncTicket = "PVEVNC:6720F1A2::fake+ticket/with=chars"
+    val vnc = FakeVnc(vncTicket)
+
     /** Keys pressed in VM 100 through the sendkey API, in order. */
     val sentKeys = CopyOnWriteArrayList<String>()
 
@@ -436,6 +440,20 @@ class FakeProxmox : AutoCloseable {
             path == "/nodes/pve/qemu/100/status/reset" && request.method == "POST" -> {
                 sentKeys.clear()
                 json("\"UPID:pve:00000014:qmreset:100:root@pam:\"")
+            }
+            path == "/nodes/pve/qemu/100/vncproxy" && request.method == "POST" ->
+                if (form(request)["websocket"] == "1") {
+                    json("""{"port":"5900","ticket":"$vncTicket","user":"root@pam","upid":"UPID:pve:00000020:vncproxy:100:root@pam:"}""")
+                } else {
+                    error(400, "websocket=1 expected")
+                }
+            path.startsWith("/nodes/pve/qemu/100/vncwebsocket") && request.method == "GET" -> {
+                val query = request.requestUrl!!
+                if (query.queryParameter("port") == "5900" && query.queryParameter("vncticket") == vncTicket) {
+                    MockResponse().withWebSocketUpgrade(vnc)
+                } else {
+                    error(401, "invalid vnc ticket")
+                }
             }
             path == "/nodes/pve/qemu/100/sendkey" && request.method == "PUT" -> {
                 sentKeys += form(request).getValue("key")

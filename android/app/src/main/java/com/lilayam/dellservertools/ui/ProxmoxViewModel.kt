@@ -16,6 +16,8 @@ import com.lilayam.dellservertools.core.proxmox.LxcRequest
 import com.lilayam.dellservertools.core.proxmox.MoveDiskRequest
 import com.lilayam.dellservertools.core.proxmox.RestoreRequest
 import com.lilayam.dellservertools.core.proxmox.VmKeys
+import com.lilayam.dellservertools.core.vnc.WebSocket
+import com.lilayam.dellservertools.core.vnc.WebSocketRefused
 import com.lilayam.dellservertools.core.proxmox.VmRequest
 import com.lilayam.dellservertools.core.proxmox.ClusterResource
 import com.lilayam.dellservertools.core.proxmox.GuestStatus
@@ -148,6 +150,27 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
         client?.consoleUrl(node, type, vmid, name)
 
     fun webUiUrl(mobile: Boolean): String? = client?.webUrl(mobile)
+
+    /**
+     * Opens a VM's screen: a fresh VNC ticket, then its WebSocket. Returns the socket and the VNC password
+     * (the ticket). A login that expired since the last call is renewed once.
+     */
+    fun openVnc(node: String, vmid: Int): Pair<WebSocket, String> {
+        val c = client ?: throw IllegalStateException("Not connected")
+        fun open(): Pair<WebSocket, String> {
+            val ticket = c.vncProxy(node, vmid)
+            return c.openVncWebSocket(node, vmid, ticket) to ticket.ticket
+        }
+        return try {
+            open()
+        } catch (e: WebSocketRefused) {
+            if (e.code != 401 || !c.canRenewLogin) throw e
+            c.login()
+            open()
+        }
+    }
+
+    fun describeError(e: Throwable): String = describe(e)
 
     /** The pve-runners service on this host, reached with the same login and certificate pin. */
     fun runnersClient(profile: ServerProfile): RunnersClient? =
