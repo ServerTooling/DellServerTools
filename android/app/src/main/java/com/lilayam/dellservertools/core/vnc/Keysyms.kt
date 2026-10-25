@@ -34,4 +34,13 @@ object Keysyms {
         c.code in 0x20..0x7e || c.code in 0xa0..0xff -> c.code
         else -> 0x01000000 or c.code
     }
+
+    /** Characters typed with Shift on a US keyboard. */
+    private const val SHIFTED_SYMBOLS = "~!@#$%^&*()_+{}|:\"<>?"
+
+    /**
+     * Modifiers to hold while typing [c]. QEMU turns a keysym into the key that carries it and doesn't press Shift
+     * itself, so "@" alone arrives as the 2 key; holding Shift makes it "@" on a US layout, as noVNC does.
+     */
+    fun modifiersFor(c: Char): IntArray = if (c in 'A'..'Z' || c in SHIFTED_SYMBOLS) intArrayOf(SHIFT) else IntArray(0)
 }

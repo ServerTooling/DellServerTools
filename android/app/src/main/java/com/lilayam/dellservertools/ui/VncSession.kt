@@ -117,7 +117,7 @@ class VncSession(
 
     fun tap(keysym: Int, vararg modifiers: Int) = input { it.tap(keysym, *modifiers) }
 
-    fun type(text: String) = input { client -> text.forEach { client.tap(Keysyms.forChar(it)) } }
+    fun type(text: String) = input { client -> text.forEach { client.tap(Keysyms.forChar(it), *Keysyms.modifiersFor(it)) } }
 
     /** A click at a screen position: move, press, release. [button] 1 = left, 4 = right. */
     fun click(x: Int, y: Int, button: Int = 1) = input {

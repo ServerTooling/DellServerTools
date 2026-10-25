@@ -34,6 +34,12 @@ class VmConsoleE2ETest : ProxmoxE2ETestBase() {
 
         tap("vnc-key-enter")
         waitUntil { Keysyms.ENTER in pve.vnc.keysDown }
+
+        // "@" and capitals need Shift held, or the VM gets "2" and lower case.
+        type("vnc-type", "a@B")
+        tap("vnc-send")
+        val typed = listOf('a'.code, Keysyms.SHIFT, '@'.code, Keysyms.SHIFT, 'B'.code)
+        waitUntil { pve.vnc.keysDown.toList().takeLast(5) == typed }
     }
 
     @Test
