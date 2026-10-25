@@ -1,12 +1,15 @@
 package com.lilayam.dellservertools.core.proxmox
 
 import com.lilayam.dellservertools.core.formatHostForUrl
+import com.lilayam.dellservertools.core.vnc.WebSocket
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.InetSocketAddress
 import java.net.URL
 import java.net.URLEncoder
 import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLSocket
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -28,8 +31,8 @@ data class ProxmoxTicket(val ticket: String, val csrfToken: String, val username
  * Every call blocks; run it off the main thread.
  */
 class ProxmoxClient(
-    host: String,
-    port: Int,
+    private val host: String,
+    private val port: Int,
     private val credentials: ProxmoxCredentials,
     pinnedFingerprint: String?,
 ) {
@@ -619,6 +622,29 @@ class ProxmoxClient(
         request("DELETE", "/nodes/${enc(node)}/tasks/${enc(upid)}", emptyMap())
     }
 
+    /** Asks for a VNC ticket for a running VM's screen; use it within a few seconds. */
+    fun vncProxy(node: String, vmid: Int): VncTicket {
+        val data = post("${guestPath(node, GuestType.QEMU, vmid)}/vncproxy", VncProxy.params()) as? JSONObject
+            ?: throw ProxmoxApiException(0, "Unexpected vncproxy response")
+        return VncTicket(port = data.getString("port").toInt(), ticket = data.getString("ticket"))
+    }
+
+    /** Connects the VM's VNC WebSocket for [ticket], over the pinned TLS and with this client's login. */
+    fun openVncWebSocket(node: String, vmid: Int, ticket: VncTicket): WebSocket {
+        if (credentials is ProxmoxCredentials.Password && this.ticket == null) login()
+        val socket = tls.socketFactory.createSocket() as SSLSocket
+        try {
+            socket.connect(InetSocketAddress(host, port), 15_000)
+            socket.soTimeout = 0
+            socket.startHandshake()
+            if (!tls.hostnameVerifier.verify(host, socket.session)) throw IOException("Certificate doesn't match $host")
+            return WebSocket.open(socket, "${formatHostForUrl(host)}:$port", VncProxy.websocketPath(node, vmid, ticket), authHeaders(write = false))
+        } catch (e: Exception) {
+            socket.close()
+            throw e
+        }
+    }
+
     /** Presses [key] (a [VmKeys] name, e.g. "ret") in a running QEMU VM. */
     fun sendKey(node: String, vmid: Int, key: String) {
         put("${guestPath(node, GuestType.QEMU, vmid)}/sendkey", VmKeys.params(key))
@@ -808,16 +834,7 @@ class ProxmoxClient(
         // After an upload's last byte, pveproxy still copies the file before it answers.
         conn.readTimeout = if (body != null) 10 * 60_000 else 60_000
         conn.setRequestProperty("Accept", "application/json")
-        if (authenticated) {
-            when (credentials) {
-                is ProxmoxCredentials.ApiToken ->
-                    conn.setRequestProperty("Authorization", "PVEAPIToken=${credentials.tokenId}=${credentials.secret}")
-                is ProxmoxCredentials.Password -> ticket?.let {
-                    conn.setRequestProperty("Cookie", "PVEAuthCookie=${enc(it.ticket)}")
-                    if (method != "GET") conn.setRequestProperty("CSRFPreventionToken", it.csrfToken)
-                }
-            }
-        }
+        if (authenticated) authHeaders(write = method != "GET").forEach(conn::setRequestProperty)
         try {
             if (body != null) {
                 conn.doOutput = true
@@ -841,6 +858,16 @@ class ProxmoxClient(
         } finally {
             conn.disconnect()
         }
+    }
+
+    private fun authHeaders(write: Boolean): Map<String, String> = when (credentials) {
+        is ProxmoxCredentials.ApiToken -> mapOf("Authorization" to "PVEAPIToken=${credentials.tokenId}=${credentials.secret}")
+        is ProxmoxCredentials.Password -> ticket?.let {
+            buildMap {
+                put("Cookie", "PVEAuthCookie=${enc(it.ticket)}")
+                if (write) put("CSRFPreventionToken", it.csrfToken)
+            }
+        }.orEmpty()
     }
 
     private fun errorMessage(status: Int, reason: String?, body: String): String {

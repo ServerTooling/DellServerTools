@@ -902,12 +902,16 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                     }
                     FilledTonalButton(
                         onClick = {
-                            vm.consoleUrl(screen.node, screen.type, screen.vmid, screen.name)?.let {
-                                val consoleVm = ConsoleVm(screen.node, screen.vmid).takeIf { screen.type == GuestType.QEMU }
-                                vms.servers.navigate(Screen.Web(profile.id, it, "Console ${screen.vmid}", isMainUi = false, consoleVm))
+                            if (screen.type == GuestType.QEMU) {
+                                vms.servers.navigate(Screen.VmConsole(profile.id, screen.node, screen.vmid, screen.name))
+                            } else {
+                                vm.consoleUrl(screen.node, screen.type, screen.vmid, screen.name)?.let {
+                                    vms.servers.navigate(Screen.Web(profile.id, it, "Console ${screen.vmid}", isMainUi = false))
+                                }
                             }
                         },
                         enabled = status?.isRunning == true,
+                        modifier = Modifier.testTag("guest-console"),
                     ) { Text("Console") }
                     OutlinedButton(onClick = { backupDialog = true }, enabled = state.busy == null) { Text("Back up now") }
                     if (detail?.config?.isNotEmpty() == true && MoveDiskRequest.movable(GuestEdit(screen.type, config)).isNotEmpty()) {
