@@ -52,7 +52,11 @@ data class VmRequest(
         return null
     }
 
+    /** Windows 11 setup refuses to install without UEFI Secure Boot and a TPM 2.0, so it always gets both. */
+    val effectiveBios: VmBios get() = if (osType == OsType.WIN11) VmBios.OVMF else bios
+
     fun toParams(): Map<String, String> {
+        val bios = effectiveBios
         val useQ35 = q35 || bios == VmBios.OVMF
         val params = linkedMapOf(
             "vmid" to vmid.toString(),
@@ -70,7 +74,8 @@ data class VmRequest(
             "start" to if (start) "1" else "0",
         )
         if (useQ35) params["machine"] = "q35"
-        if (bios == VmBios.OVMF) params["efidisk0"] = "$diskStorage:1,efitype=4m,pre-enrolled-keys=1"
+        if (bios == VmBios.OVMF) params["efidisk0"] = VmHardware.efiDisk(diskStorage)
+        if (osType == OsType.WIN11) params["tpmstate0"] = VmHardware.tpmState(diskStorage)
         val boot = buildString {
             append("order=scsi0")
             if (isoVolid.isNotBlank()) append(";ide2")

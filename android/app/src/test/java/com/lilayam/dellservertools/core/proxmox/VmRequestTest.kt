@@ -54,6 +54,17 @@ class VmRequestTest {
     }
 
     @Test
+    fun `windows 11 always gets uefi with secure boot keys, q35 and a tpm`() {
+        val p = base().copy(osType = OsType.WIN11, bios = VmBios.SEABIOS).toParams()
+        assertEquals("win11", p["ostype"])
+        assertEquals("ovmf", p["bios"])
+        assertEquals("q35", p["machine"])
+        assertEquals("local-zfs:1,efitype=4m,pre-enrolled-keys=1", p["efidisk0"])
+        assertEquals("local-zfs:1,version=v2.0", p["tpmstate0"])
+        assertNull(base().copy(bios = VmBios.OVMF).toParams()["tpmstate0"], "only Windows 11 gets a TPM by default")
+    }
+
+    @Test
     fun `agent and start flags`() {
         assertEquals("1", base().copy(agent = true, start = true).toParams()["agent"])
         assertEquals("1", base().copy(start = true).toParams()["start"])

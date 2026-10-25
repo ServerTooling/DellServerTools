@@ -100,6 +100,12 @@ object VmHardware {
 
     fun tpmState(storage: String): String = "$storage:1,version=v2.0"
 
+    /**
+     * Whether an EFI disk holds Microsoft's Secure Boot keys. One made without them (the web UI's "Pre-Enroll keys"
+     * unticked) boots with Secure Boot off, and Windows 11 setup then says the PC must support Secure Boot.
+     */
+    fun efiDiskHasKeys(value: String): Boolean = value.split(',').any { it.trim() == "pre-enrolled-keys=1" }
+
     /** A USB device passed through by vendor and product id, so it follows the device to another port. */
     fun usb(device: UsbDevice): String = "host=${device.vendorId}:${device.productId}"
 

@@ -57,6 +57,12 @@ internal fun VmHardwareSection(e: GuestEdit, storages: List<String>, onChange: (
             }
         }
     }
+    if (e["bios"] == "ovmf" && "efidisk0" in e.values && !VmHardware.efiDiskHasKeys(e["efidisk0"])) {
+        Note(
+            "This EFI disk has no Secure Boot keys, so Secure Boot is off (Windows 11 setup refuses to install). " +
+                "Remove efidisk0 below, save, then add the EFI disk again: a new one comes with the keys.",
+        )
+    }
     Dropdown("Machine", VmHardware.withCurrent(VmHardware.MACHINES, e["machine"]), e["machine"]) { onChange(e.with("machine", it)) }
     val vga = VmHardware.main(e["vga"])
     Dropdown("Display", VmHardware.withCurrent(VmHardware.DISPLAYS, vga), vga) { onChange(VmHardware.withMain(e, "vga", it)) }
