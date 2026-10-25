@@ -108,4 +108,14 @@ class RfbClientTest {
         assertEquals(0x010020ac, Keysyms.forChar('€'))
         assertEquals(0xffc9, Keysyms.f(12))
     }
+
+    @Test
+    fun `shifted characters are typed with shift held`() {
+        listOf('@', 'A', 'Z', '!', '"', '?', '~', '_').forEach {
+            assertArrayEquals(intArrayOf(Keysyms.SHIFT), Keysyms.modifiersFor(it), "$it")
+        }
+        listOf('a', '2', '.', '-', ' ', '\n', 'é').forEach {
+            assertArrayEquals(IntArray(0), Keysyms.modifiersFor(it), "$it")
+        }
+    }
 }
