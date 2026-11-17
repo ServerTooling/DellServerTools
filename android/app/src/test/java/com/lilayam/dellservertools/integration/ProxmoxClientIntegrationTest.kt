@@ -104,7 +104,13 @@ class ProxmoxClientIntegrationTest {
         val c = client()
         val resources = c.resources()
         assertEquals(listOf("pve", "web-01", "gh-runner-1", "local"), resources.map { it.name })
-        assertEquals(listOf("gh-runner"), resources.first { it.vmid == 200 }.tags)
+        assertEquals(
+            listOf(
+                "gh-runner", "owner-example-org", "runnerid-41", "repo-app", "pr-12", "branch-feature-login",
+                "wf-ci", "job-unit-2-4", "run-42",
+            ),
+            resources.first { it.vmid == 200 }.tags,
+        )
 
         assertEquals(16, c.nodeStatus("pve").cpuCount)
         assertEquals(listOf("local", "local-zfs"), c.storage("pve").map { it.storage })
