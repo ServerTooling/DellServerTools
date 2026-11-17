@@ -97,6 +97,22 @@ class ProxmoxClient(
     fun zfsPool(node: String, pool: String): ZfsPool =
         ProxmoxJson.zfsPool(get("/nodes/${enc(node)}/disks/zfs/${enc(pool)}") as JSONObject)
 
+    /** Every storage.cfg entry (`GET /storage`), keyed by storage ID; needs Datastore.Audit. */
+    fun storageDefinitions(): Map<String, Map<String, String>> =
+        (get("/storage") as JSONArray).let { a ->
+            (0 until a.length()).mapNotNull { a.optJSONObject(it) }.associate { o ->
+                o.optString("storage") to o.keys().asSequence().filter { it != "digest" }.associateWith { o.opt(it)?.toString().orEmpty() }
+            }
+        }
+
+    /** Each LVM volume group with its physical volumes (`GET /disks/lvm`). */
+    fun lvmPhysicalVolumes(node: String): Map<String, List<String>> =
+        StorageMedia.lvmTree(get("/nodes/${enc(node)}/disks/lvm") as JSONObject)
+
+    /** Mount path to device of the directories the Disks panel made (`GET /disks/directory`). */
+    fun directoryDevices(node: String): Map<String, String> =
+        StorageMedia.directoryMounts(get("/nodes/${enc(node)}/disks/directory") as JSONArray)
+
     fun disks(node: String): List<PhysicalDisk> = ProxmoxJson.disks(get("/nodes/${enc(node)}/disks/list") as JSONArray)
 
     // ---- VM hardware

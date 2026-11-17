@@ -284,6 +284,10 @@ class FakeProxmox : AutoCloseable {
             }
             path.startsWith("/nodes/pve/storage/local/prunebackups") && request.method == "DELETE" ->
                 json("\"UPID:pve:00000023:prunebackups:local:root@pam:\"")
+            path == "/storage" && request.method == "GET" -> json(
+                """[{"storage":"local","type":"dir","path":"/var/lib/vz","content":"iso,backup,vztmpl","digest":"abc"},
+                    {"storage":"local-zfs","type":"zfspool","pool":"rpool/data","sparse":1,"content":"images,rootdir","digest":"abc"}]""",
+            )
             path == "/storage" && request.method == "POST" -> json("null")
             path.startsWith("/storage/") && (request.method == "PUT" || request.method == "DELETE") -> json("null")
             path == "/nodes/pve/scan/zfs" -> json("""[{"pool":"tank","size":1000,"alloc":10,"free":990}]""")
