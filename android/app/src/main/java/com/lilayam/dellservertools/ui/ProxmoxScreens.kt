@@ -62,11 +62,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,6 +84,7 @@ import com.lilayam.dellservertools.core.proxmox.MoveDiskRequest
 import com.lilayam.dellservertools.core.proxmox.GuestShell
 import com.lilayam.dellservertools.core.proxmox.GuestType
 import com.lilayam.dellservertools.core.proxmox.PhysicalDisk
+import com.lilayam.dellservertools.core.proxmox.RunnerJob
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.delay
@@ -331,9 +334,36 @@ private fun ResourceCard(resource: ClusterResource, onClick: () -> Unit) {
                 }
                 Text("Up ${Format.duration(resource.uptime)}", style = MaterialTheme.typography.bodySmall)
             }
-            if (resource.tags.isNotEmpty()) {
-                Text(resource.tags.joinToString("  ") { "#$it" }, style = MaterialTheme.typography.labelSmall)
+            val job = RunnerJob.fromTags(resource.tags)
+            if (job != null) RunnerJobLines(job, resource.vmid)
+            // The job's own tags are spelled out above, so only the rest stay in the tag line.
+            val tags = if (job != null) resource.tags.filterNot(RunnerJob::isJobTag) else resource.tags
+            if (tags.isNotEmpty()) {
+                Text(tags.joinToString("  ") { "#$it" }, style = MaterialTheme.typography.labelSmall)
             }
+        }
+    }
+}
+
+/** What a GitHub runner container is building, with a link to the run on GitHub. */
+@Composable
+private fun RunnerJobLines(job: RunnerJob, vmid: Int?) {
+    val uriHandler = LocalUriHandler.current
+    Column(Modifier.testTag("runner-job-$vmid")) {
+        Text(job.source, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+        job.what?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        job.runUrl?.let { url ->
+            Text(
+                "Open run on GitHub",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                textDecoration = TextDecoration.Underline,
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    // Ignored when no browser can take it; the card itself still opens the container.
+                    .clickable { runCatching { uriHandler.openUri(url) } }
+                    .testTag("runner-run-$vmid"),
+            )
         }
     }
 }

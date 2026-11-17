@@ -298,7 +298,7 @@ class FakeProxmox : AutoCloseable {
                 """[
                   {"id":"node/pve","type":"node","node":"pve","status":"online","cpu":0.03,"maxcpu":16,"mem":4294967296,"maxmem":34359738368,"uptime":7200},
                   {"id":"qemu/100","type":"qemu","node":"pve","vmid":100,"name":"web-01","status":"$status","maxcpu":2,"maxmem":2147483648},
-                  {"id":"lxc/200","type":"lxc","node":"pve","vmid":200,"name":"gh-runner-1","status":"running","maxcpu":4,"tags":"gh-runner"},
+                  {"id":"lxc/200","type":"lxc","node":"pve","vmid":200,"name":"gh-runner-1","status":"running","maxcpu":4,"tags":"gh-runner;owner-example-org;runnerid-41;repo-app;pr-12;branch-feature-login;wf-ci;job-unit-2-4;run-42"},
                   {"id":"storage/pve/local","type":"storage","node":"pve","storage":"local","status":"available","disk":10,"maxdisk":100}
                 ]""",
             )

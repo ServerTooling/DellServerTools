@@ -1,6 +1,7 @@
 package com.lilayam.dellservertools.e2e
 
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -21,7 +22,11 @@ class ProxmoxOverviewE2ETest : ProxmoxE2ETestBase() {
         addServerAndConnect()
         waitForText("100 · web-01")
         scrollListTo("200 · gh-runner-1")
-        compose.onNodeWithText("#gh-runner").assertExists()
+        // A runner's job tags are spelled out, with a link to the run; the other tags stay as tags.
+        compose.onNodeWithText("#gh-runner  #owner-example-org  #runnerid-41").assertExists()
+        compose.onNodeWithText("example-org/app · PR #12 (feature-login)").assertExists()
+        compose.onNodeWithText("ci › unit-2-4 · run 42").assertExists()
+        compose.onNodeWithTag("runner-run-200").assertExists()
         scrollListTo("local")
         compose.onNodeWithText("local").assertExists()
 
