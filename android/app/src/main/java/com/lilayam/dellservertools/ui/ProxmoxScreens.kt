@@ -372,7 +372,11 @@ private fun StorageRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StatusDot(statusColor(status))
                 Spacer(Modifier.width(10.dp))
-                Text(listOfNotNull(name, media).joinToString(" · "), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Row(Modifier.weight(1f)) {
+                    Text(name, fontWeight = FontWeight.SemiBold)
+                    // Its own text, so tests and screen readers still find the storage by its plain name.
+                    media?.let { Text(" · $it", fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("storage-media-$name")) }
+                }
                 Text(node, style = MaterialTheme.typography.labelSmall)
             }
             if (total > 0) {

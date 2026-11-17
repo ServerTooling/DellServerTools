@@ -1,6 +1,9 @@
 package com.lilayam.dellservertools.e2e
 
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -33,10 +36,13 @@ class ProxmoxNavigationE2ETest : ProxmoxE2ETestBase() {
         waitForText("Node pve")
         waitForText("Xeon")
         // rpool mirrors the fake's SSD sda3 and HDD sdb3, and local is a folder on it.
-        scrollListTo("local-zfs (zfspool) · SSD + HDD")
-        waitForText("local-zfs (zfspool) · SSD + HDD")
-        scrollListTo("local (dir) · SSD + HDD")
-        waitForText("local (dir) · SSD + HDD")
+        scrollListTo("local-zfs (zfspool)")
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("storage-media-local-zfs (zfspool)", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("storage-media-local-zfs (zfspool)", useUnmergedTree = true).assertTextEquals(" · SSD + HDD")
+        scrollListTo("local (dir)")
+        compose.onNodeWithTag("storage-media-local (dir)", useUnmergedTree = true).assertTextEquals(" · SSD + HDD")
         compose.onNodeWithContentDescription("Back").performClick()
 
         // Re-opening the server must not ask about the certificate again.
