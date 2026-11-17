@@ -32,6 +32,11 @@ class ProxmoxNavigationE2ETest : ProxmoxE2ETestBase() {
         compose.onNodeWithText("pve").performClick()
         waitForText("Node pve")
         waitForText("Xeon")
+        // rpool mirrors the fake's SSD sda3 and HDD sdb3, and local is a folder on it.
+        scrollListTo("local-zfs (zfspool) · SSD + HDD")
+        waitForText("local-zfs (zfspool) · SSD + HDD")
+        scrollListTo("local (dir) · SSD + HDD")
+        waitForText("local (dir) · SSD + HDD")
         compose.onNodeWithContentDescription("Back").performClick()
 
         // Re-opening the server must not ask about the certificate again.

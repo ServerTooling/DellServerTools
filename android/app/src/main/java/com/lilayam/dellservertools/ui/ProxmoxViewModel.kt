@@ -31,6 +31,7 @@ import com.lilayam.dellservertools.core.proxmox.ProxmoxCredentials
 import com.lilayam.dellservertools.core.proxmox.RunnersClient
 import com.lilayam.dellservertools.core.proxmox.Snapshot
 import com.lilayam.dellservertools.core.proxmox.StorageInfo
+import com.lilayam.dellservertools.core.proxmox.StorageMedia
 import com.lilayam.dellservertools.core.proxmox.StorageStatus
 import com.lilayam.dellservertools.core.proxmox.StorageVolume
 import com.lilayam.dellservertools.core.proxmox.TaskSummary
@@ -69,6 +70,8 @@ data class NodeDetail(
     val status: NodeStatus? = null,
     val storage: List<StorageInfo> = emptyList(),
     val disks: List<PhysicalDisk> = emptyList(),
+    /** "SSD", "HDD", "SSD + HDD", ... by storage ID, for the storages whose disks could be found. */
+    val media: Map<String, String> = emptyMap(),
 )
 
 data class StorageDetail(
@@ -274,8 +277,27 @@ class ProxmoxViewModel(application: Application) : AndroidViewModel(application)
             val storage = runCatching { c.storage(node) }.getOrDefault(emptyList())
             // Needs Sys.Audit; a token without it still sees the rest of the node.
             val disks = runCatching { c.disks(node) }.getOrDefault(emptyList())
-            return@load { it.copy(node = NodeDetail(node, status, storage, disks)) }
+            // The disks under a storage rarely change: work them out again only when storages or disks do.
+            val previous = _state.value.node?.takeIf { it.node == node && it.disks == disks }
+            val media = if (previous != null && previous.storage.map { it.storage } == storage.map { it.storage }) {
+                previous.media
+            } else {
+                storageMedia(c, node, storage, disks)
+            }
+            return@load { it.copy(node = NodeDetail(node, status, storage, disks, media)) }
         }
+    }
+
+    private fun storageMedia(c: ProxmoxClient, node: String, storage: List<StorageInfo>, disks: List<PhysicalDisk>): Map<String, String> {
+        if (disks.isEmpty()) return emptyMap()
+        val definitions = runCatching { c.storageDefinitions() }.getOrNull() ?: return emptyMap()
+        // An LVM-based install has no rpool: that read fails and is left out.
+        val zfs = StorageMedia.poolsToRead(definitions)
+            .mapNotNull { pool -> runCatching { pool to c.zfsPool(node, pool).devices.map { it.name } }.getOrNull() }
+            .toMap()
+        val lvm = if (StorageMedia.needsLvm(definitions, zfs)) runCatching { c.lvmPhysicalVolumes(node) }.getOrDefault(emptyMap()) else emptyMap()
+        val mounts = runCatching { c.directoryDevices(node) }.getOrDefault(emptyMap())
+        return StorageMedia.labels(storage, StorageMedia.NodeDisks(disks, definitions, zfs, lvm, mounts))
     }
 
     fun loadStorage(node: String, storage: String) {

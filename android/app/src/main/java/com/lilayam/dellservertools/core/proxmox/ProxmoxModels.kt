@@ -173,6 +173,9 @@ data class PhysicalDisk(
     val health: String,
     val wearout: String,
     val used: String,
+    /** `/dev/disk/by-id/...` and the WWN: ZFS pools often name their disks this way instead of `sdX`. */
+    val byIdLink: String = "",
+    val wwn: String = "",
 )
 
 /** A container template already present on a storage. */
@@ -377,6 +380,8 @@ object ProxmoxJson {
             // Percent of rated life left (100 = new), or "N/A" for disks that don't report it.
             wearout = o.optString("wearout"),
             used = o.optString("used"),
+            byIdLink = o.optString("by_id_link"),
+            wwn = o.optString("wwn").takeUnless { it == "unknown" }.orEmpty(),
         )
     }.sortedBy { it.devPath }
 

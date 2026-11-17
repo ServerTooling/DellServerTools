@@ -357,13 +357,22 @@ private fun UsageLine(label: String, fraction: Double, text: String) {
 }
 
 @Composable
-private fun StorageRow(name: String, node: String, used: Long, total: Long, status: String, onClick: () -> Unit) {
+private fun StorageRow(
+    name: String,
+    node: String,
+    used: Long,
+    total: Long,
+    status: String,
+    /** The kind of disks underneath ("SSD", "SSD + HDD"), when known. */
+    media: String? = null,
+    onClick: () -> Unit,
+) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("storage-$name")) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 StatusDot(statusColor(status))
                 Spacer(Modifier.width(10.dp))
-                Text(name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(listOfNotNull(name, media).joinToString(" · "), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 Text(node, style = MaterialTheme.typography.labelSmall)
             }
             if (total > 0) {
@@ -686,6 +695,7 @@ fun NodeScreen(profile: ServerProfile, node: String, vms: AppViewModels) {
                         s.used,
                         s.total,
                         if (s.active) "available" else "unknown",
+                        media = detail.media[s.storage],
                     ) { vms.servers.navigate(Screen.Storage(profile.id, node, s.storage)) }
                 }
             }
