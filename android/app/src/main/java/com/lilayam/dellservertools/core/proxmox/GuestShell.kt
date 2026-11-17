@@ -16,4 +16,15 @@ object GuestShell {
         GuestType.LXC -> "pct enter $vmid"
         GuestType.QEMU -> null
     }
+
+    /**
+     * The host-shell command that clears a guest's config lock. A task killed midway (a host reboot or
+     * a stopped service during create, clone, backup, ...) leaves its lock behind, and Proxmox then
+     * refuses to start, change or delete the guest. The API can't clear it, so it goes through the shell
+     * like in the web UI's docs.
+     */
+    fun unlockCommand(type: GuestType, vmid: Int): String = when (type) {
+        GuestType.LXC -> "pct unlock $vmid"
+        GuestType.QEMU -> "qm unlock $vmid"
+    }
 }

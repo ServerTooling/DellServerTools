@@ -89,6 +89,17 @@ class GuestActionsE2ETest : ProxmoxE2ETestBase() {
     }
 
     @Test
+    fun aStaleLockIsClearedFromTheHostShell() {
+        pve.vmLock = "create"
+        openVm()
+        waitUntil { compose.onAllNodesWithTag("guest-unlock").fetchSemanticsNodes().isNotEmpty() }
+        tap("guest-unlock")
+        waitForText("Unlock VM 100?")
+        compose.onNode(hasText("Unlock") and hasAnyAncestor(isDialog())).performClick()
+        waitForText("Lab PVE shell")
+    }
+
+    @Test
     fun snapshotsWithRamHibernatesAndStopsTheTask() {
         pve.vmRunning.set(true)
         openVm()

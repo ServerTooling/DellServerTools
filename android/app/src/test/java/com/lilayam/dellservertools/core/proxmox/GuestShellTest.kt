@@ -16,4 +16,10 @@ class GuestShellTest {
     fun `vm has no native shell yet`() {
         assertNull(GuestShell.enterCommand(GuestType.QEMU, 100))
     }
+
+    @Test
+    fun `a stale lock is cleared with pct or qm unlock`() {
+        assertEquals("pct unlock 8900", GuestShell.unlockCommand(GuestType.LXC, 8900))
+        assertEquals("qm unlock 100", GuestShell.unlockCommand(GuestType.QEMU, 100))
+    }
 }

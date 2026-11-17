@@ -788,6 +788,7 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
     var snapshotDialog by remember { mutableStateOf(false) }
     var backupDialog by remember { mutableStateOf(false) }
     var snapshotConfirm by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var unlockConfirm by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
     var moveDisk by remember { mutableStateOf(false) }
     var moveTargets by remember { mutableStateOf<Result<List<String>>?>(null) }
@@ -864,10 +865,14 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                             }
                             if (locked) {
                                 Text(
-                                    "A ${status.lock} task is still running on this $kind. Start and changes come back when it finishes.",
+                                    "A ${status.lock} task holds this $kind. Start and changes come back when it finishes. " +
+                                        "If it was cut off (a reboot or restart), the lock stays until you unlock it.",
                                     style = MaterialTheme.typography.bodySmall,
                                     modifier = Modifier.testTag("guest-locked"),
                                 )
+                                OutlinedButton(onClick = { unlockConfirm = true }, modifier = Modifier.testTag("guest-unlock")) {
+                                    Text("Unlock…")
+                                }
                             }
                             if (status.isRunning) {
                                 UsageLine("CPU", status.cpu, "${Format.percent(status.cpu)} of ${status.cpus}")
@@ -1058,6 +1063,18 @@ fun GuestScreen(profile: ServerProfile, screen: Screen.Guest, vms: AppViewModels
                 }
             },
             onDismiss = { confirm = null },
+        )
+    }
+    if (unlockConfirm) {
+        val command = GuestShell.unlockCommand(screen.type, screen.vmid)
+        ConfirmDialog(
+            title = "Unlock $kind ${screen.vmid}?",
+            text = "Only if no ${status?.lock ?: ""} task is still running for it (check Tasks): a lock left by a task " +
+                "that was cut off, e.g. by a reboot, stays until it is cleared. This opens the host shell and runs " +
+                "\"$command\".",
+            confirmLabel = "Unlock",
+            onConfirm = { vms.servers.openShell(profile, command) },
+            onDismiss = { unlockConfirm = false },
         )
     }
     snapshotConfirm?.let { (what, name) ->
