@@ -14,26 +14,26 @@ class StorageMediaTest {
     private fun disk(dev: String, type: String, size: Long, used: String, model: String = "", byId: String = "", wwn: String = "") =
         PhysicalDisk("/dev/$dev", model, type, size, "PASSED", "", used, byIdLink = byId, wwn = wwn)
 
-    /** A typical R710 layout: rpool mirror on two SSDs, a 2 TB HDD and two SAS drives Proxmox can't classify. */
+    /** rpool mirrored on two SSDs, a 4 TB HDD and two SAS drives Proxmox can't classify. */
     private val disks = listOf(
-        disk("sda", "ssd", 224 * gib, "BIOS boot", "SATA_SSD", byId = "/dev/disk/by-id/ata-SATA_SSD_A1"),
-        disk("sdb", "ssd", 224 * gib, "BIOS boot", "SATA_SSD", wwn = "0x5000000000000002"),
-        disk("sdc", "hdd", 1863 * gib, "xfs", "ST2000LM010-1RA174"),
-        disk("sdd", "unknown", 559 * gib, "ext4", "ST600MM0006"),
-        disk("sde", "unknown", 559 * gib, "ext4", "ST600MM0006"),
-        disk("sdf", "usb", 4 * gib, "iso9660", "Cruzer_Micro"),
+        disk("sda", "ssd", 224 * gib, "BIOS boot", "EXAMPLE_SSD", byId = "/dev/disk/by-id/ata-EXAMPLE_SSD_A1"),
+        disk("sdb", "ssd", 224 * gib, "BIOS boot", "EXAMPLE_SSD", wwn = "0x5000000000000002"),
+        disk("sdc", "hdd", 3726 * gib, "xfs", "ST4000VN008-2DR166"),
+        disk("sdd", "unknown", 838 * gib, "ext4", "ST900MM0168"),
+        disk("sde", "unknown", 838 * gib, "ext4", "ST900MM0168"),
+        disk("sdf", "usb", 4 * gib, "iso9660", "USB_STICK"),
     )
 
     private val definitions = mapOf(
         "local" to mapOf("type" to "dir", "path" to "/var/lib/vz"),
         "local-zfs" to mapOf("type" to "zfspool", "pool" to "rpool/data"),
-        "local_2tb" to mapOf("type" to "dir", "path" to "/mnt/local_2tb"),
-        "local_600gb_1" to mapOf("type" to "dir", "path" to "/mnt/pve/local_600gb_1"),
+        "hdd-dir" to mapOf("type" to "dir", "path" to "/mnt/hdd-dir"),
+        "sas-dir" to mapOf("type" to "dir", "path" to "/mnt/pve/sas-dir"),
         "backups" to mapOf("type" to "nfs", "path" to "/mnt/pve/backups"),
     )
 
     // The pool names its disks by ID, as the installer does.
-    private val zfs = mapOf("rpool" to listOf("rpool", "mirror-0", "ata-SATA_SSD_A1-part3", "wwn-0x5000000000000002-part3"))
+    private val zfs = mapOf("rpool" to listOf("rpool", "mirror-0", "ata-EXAMPLE_SSD_A1-part3", "wwn-0x5000000000000002-part3"))
 
     private fun storage(id: String, type: String, total: Long) = StorageInfo(id, type, emptyList(), 0, total, true)
 
@@ -42,27 +42,27 @@ class StorageMediaTest {
         val storages = listOf(
             storage("local", "dir", 150 * gib),
             storage("local-zfs", "zfspool", 198 * gib),
-            storage("local_2tb", "dir", 1862 * gib),
-            storage("local_600gb_1", "dir", 549 * gib),
+            storage("hdd-dir", "dir", 3725 * gib),
+            storage("sas-dir", "dir", 825 * gib),
             storage("backups", "nfs", 1000 * gib),
         )
         val node = StorageMedia.NodeDisks(disks, definitions, zfs)
         assertEquals(
-            mapOf("local" to "SSD", "local-zfs" to "SSD", "local_2tb" to "HDD", "local_600gb_1" to "HDD"),
+            mapOf("local" to "SSD", "local-zfs" to "SSD", "hdd-dir" to "HDD", "sas-dir" to "HDD"),
             StorageMedia.labels(storages, node),
         )
     }
 
     @Test
     fun `a directory made by the Disks panel is found by its device`() {
-        val node = StorageMedia.NodeDisks(disks, definitions, zfs, mounts = mapOf("/mnt/pve/local_600gb_1" to "/dev/sdc1"))
-        assertEquals(listOf(disks[2]), StorageMedia.disksOf(storage("local_600gb_1", "dir", 549 * gib), node))
+        val node = StorageMedia.NodeDisks(disks, definitions, zfs, mounts = mapOf("/mnt/pve/sas-dir" to "/dev/sdc1"))
+        assertEquals(listOf(disks[2]), StorageMedia.disksOf(storage("sas-dir", "dir", 825 * gib), node))
     }
 
     @Test
     fun `a by-hand mount whose size fits disks of different kinds stays unlabelled`() {
-        val mixed = disks + disk("sdg", "ssd", 559 * gib, "ext4")
-        assertNull(StorageMedia.disksOf(storage("local_600gb_1", "dir", 549 * gib), StorageMedia.NodeDisks(mixed, definitions, zfs)))
+        val mixed = disks + disk("sdg", "ssd", 838 * gib, "ext4")
+        assertNull(StorageMedia.disksOf(storage("sas-dir", "dir", 825 * gib), StorageMedia.NodeDisks(mixed, definitions, zfs)))
     }
 
     @Test
@@ -86,7 +86,7 @@ class StorageMediaTest {
 
     @Test
     fun `Seagate model numbers tell hard drives from flash`() {
-        assertEquals("HDD", StorageMedia.kind(disk("sdd", "unknown", 1, "", "ST600MM0006")))
+        assertEquals("HDD", StorageMedia.kind(disk("sdd", "unknown", 1, "", "ST900MM0168")))
         assertEquals("HDD", StorageMedia.kind(disk("sdd", "unknown", 1, "", "SEAGATE ST4000NM0035")))
         assertNull(StorageMedia.kind(disk("sdd", "unknown", 1, "", "ST400FM0053")))
         assertNull(StorageMedia.kind(disk("sdd", "unknown", 1, "", "PERC H700")))

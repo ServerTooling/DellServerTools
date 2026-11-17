@@ -33,7 +33,7 @@ object StorageMedia {
 
     /**
      * Seagate model numbers say whether the drive spins: ST + capacity + form letter, where F means flash
-     * (ST400FM0053 is a SAS SSD) and the rest are hard drives (ST600MM0006, ST2000LM010). SAS drives often report
+     * (ST400FM0053 is a SAS SSD) and the rest are hard drives (ST900MM0168, ST4000VN008). SAS drives often report
      * no rotation rate, so Proxmox lists them as "unknown".
      */
     private val SEAGATE_HDD = Regex("\\bST\\d+[A-EG-Z][A-Z]\\d")
